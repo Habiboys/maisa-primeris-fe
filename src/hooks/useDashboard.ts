@@ -45,19 +45,22 @@ export function useDashboard() {
     }
     setIsLoading(true);
     try {
-      // Fetch semua data dashboard sekaligus agar efisien
-      const [sum, cf, cp, sd, bva] = await Promise.all([
+      // Fetch semua data dashboard sekaligus — gunakan allSettled agar
+      // satu endpoint yang gagal tidak membatalkan yang lain
+      const [sum, cf, cp, sd, bva] = await Promise.allSettled([
         dashboardService.getSummary(),
         dashboardService.getCashflow(6),
         dashboardService.getConstructionProgress(),
         dashboardService.getSalesDistribution(),
         dashboardService.getBudgetVsActual(),
       ]);
-      setSummary(sum);
-      setCashflow(cf);
-      setConstructionProgress(cp);
-      setSalesDistribution(sd);
-      setBudgetVsActual(bva);
+      if (sum.status === 'fulfilled') setSummary(sum.value);
+      if (cf.status  === 'fulfilled') setCashflow(cf.value);
+      if (cp.status  === 'fulfilled') setConstructionProgress(cp.value);
+      if (sd.status  === 'fulfilled') setSalesDistribution(sd.value);
+      if (bva.status === 'fulfilled') setBudgetVsActual(bva.value);
+      // Hanya tampilkan error jika summary gagal (endpoint utama)
+      if (sum.status === 'rejected') toast.error(getErrorMessage(sum.reason));
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {

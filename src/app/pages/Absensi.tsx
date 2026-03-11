@@ -14,21 +14,24 @@ import {
     UserCheck,
     X,
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
     useAttendance,
+    useAttendanceRecap,
     useConfirmDialog,
     useLeaveRequests,
     useLocationAssignments,
+    useMyAttendance,
     useWorkLocations,
 } from '../../hooks';
-import { mockAttendanceRecap } from '../../lib/mockAttendance';
-import type { Attendance, LeaveRequest, WorkLocation } from '../../types';
+import { userService } from '../../services';
+import type { Attendance, LeaveRequest, User, WorkLocation } from '../../types';
 
 // Map imports
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 
 // Fix for default marker icon in leaflet
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -41,6 +44,24 @@ const DefaultIcon = L.icon({
   iconAnchor: [12, 41],
 });
 L.Marker.prototype.options.icon = DefaultIcon;
+
+// Blue dot icon for user's current GPS position
+const userGpsIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:16px;height:16px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(59,130,246,0.5)"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+// Haversine distance in meters
+const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 interface AbsensiProps {
   userRole: string;
@@ -92,10 +113,14 @@ function StatusBadge({ status }: { status: string }) {
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
-/** Extract HH:mm from ISO string like "2026-03-03T08:02:00.000Z" */
-function fmtTime(iso?: string): string {
-  if (!iso) return '--:--';
-  const d = new Date(iso);
+/** Extract HH:mm from TIME string ("08:30:00") or ISO string ("2026-03-03T08:02:00.000Z") */
+function fmtTime(val?: string): string {
+  if (!val) return '--:--';
+  // Handle HH:mm:ss format from MySQL TIME type
+  if (/^\d{2}:\d{2}(:\d{2})?$/.test(val)) return val.slice(0, 5);
+  // Handle ISO string
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return '--:--';
   return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
@@ -115,15 +140,19 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
   const isSuperAdmin = userRole === 'Super Admin';
   const [activeTab, setActiveTab] = useState<'realtime' | 'recap' | 'requests' | 'settings'>('realtime');
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isClockedIn, setIsClockedIn] = useState(false);
-  const [clockInTime, setClockInTime] = useState<string | null>(null);
   const [isLocationVerified, setIsLocationVerified] = useState(false);
+  const [userGpsPos, setUserGpsPos] = useState<[number, number] | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [distanceM, setDistanceM] = useState<number | null>(null);
+  const hasAutoVerified = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // ── Hooks ────────────────────────────────────────────────────────
   const { locations, create: createLocation, remove: removeLocation } = useWorkLocations();
-  const { assignments } = useLocationAssignments();
+  const { assignments, create: createAssignment, remove: removeAssignment } = useLocationAssignments();
   const { attendances, clockIn, clockOut } = useAttendance();
+  const { myAttendances, refetch: refetchMyAttendances } = useMyAttendance();
   const {
     leaveRequests,
     create: createLeave,
@@ -132,15 +161,44 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
     remove: removeLeave,
   } = useLeaveRequests();
 
+  // SA: load users list for assignment form
+  const [usersList, setUsersList] = useState<User[]>([]);
+  useEffect(() => {
+    if (isSuperAdmin) {
+      userService.getAll({ limit: 200 }).then(res => setUsersList(res.data)).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin]);
+
+  // Rekap bulanan
+  const [recapMonth, setRecapMonth] = useState(new Date().getMonth() + 1);
+  const [recapYear,  setRecapYear]  = useState(new Date().getFullYear());
+  const { recap: recapData, isLoading: recapLoading } = useAttendanceRecap(recapMonth, recapYear);
+
   // Find assigned location for current user from assignments
   const userAssignment = assignments.find((a) => a.user?.name === userName);
   const userAssignedLocation = locations.find((l) => l.id === userAssignment?.work_location_id);
+
+  // Derive clock-in/out state from real API data
+  const todayStr2 = new Date().toISOString().slice(0, 10);
+  const todayRecord = myAttendances.find((a) => a.attendance_date === todayStr2);
+  const isClockedIn  = !!todayRecord?.clock_in && !todayRecord?.clock_out;
+  const hasClockedOut = !!todayRecord?.clock_out;
 
   // Clock tick
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Auto-trigger GPS verification once when location assignment is loaded
+  useEffect(() => {
+    if (!hasAutoVerified.current && (userAssignedLocation || locations.length > 0)) {
+      hasAutoVerified.current = true;
+      triggerGps();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userAssignedLocation, locations]);
 
   // ── Modals ───────────────────────────────────────────────────────
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -174,34 +232,79 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
     reason: '',
   });
 
+  // ── Assignment form state ────────────────────────────────────────
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignForm, setAssignForm] = useState({ user_id: '', work_location_id: '' });
+
   /* ── Handlers ────────────────────────────────────────────────────── */
 
-  const handleVerifyLocation = () => {
-    // In real app this uses navigator.geolocation
-    setTimeout(() => {
-      setIsLocationVerified(true);
-    }, 1500);
+  const triggerGps = () => {
+    if (!navigator.geolocation) {
+      toast.error('Browser tidak mendukung GPS');
+      return;
+    }
+    setGpsLoading(true);
+    setGpsError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const gps: [number, number] = [latitude, longitude];
+        setUserGpsPos(gps);
+        if (userAssignedLocation?.latitude != null && userAssignedLocation?.longitude != null) {
+          const dist = haversineM(latitude, longitude,
+            Number(userAssignedLocation.latitude), Number(userAssignedLocation.longitude));
+          const d = Math.round(dist);
+          setDistanceM(d);
+          const radius = userAssignedLocation.radius_m ?? 100;
+          if (d <= radius) {
+            setIsLocationVerified(true);
+            setGpsError(null);
+          } else {
+            setIsLocationVerified(false);
+            setGpsError(`Di luar area absensi. Jarak: ${d}m, maks: ${radius}m`);
+          }
+        } else {
+          // Tidak ada penugasan lokasi — blokir absensi
+          setIsLocationVerified(false);
+          setGpsError('Anda belum ditugaskan ke lokasi absensi. Hubungi admin.');
+        }
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsError('GPS gagal: ' + err.message);
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
   };
 
+  const handleVerifyLocation = () => triggerGps();
+
   const handleClockIn = async () => {
-    if (!isLocationVerified) return;
+    if (!userGpsPos) {
+      toast.error('Verifikasi GPS terlebih dahulu');
+      return;
+    }
+    if (!isLocationVerified) {
+      toast.error('Anda berada di luar area absensi yang ditentukan');
+      return;
+    }
     try {
-      const lat = userAssignedLocation?.latitude ?? -6.2088;
-      const lng = userAssignedLocation?.longitude ?? 106.8456;
-      await clockIn({ lat, lng });
-      setIsClockedIn(true);
-      setClockInTime(currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-    } catch (err) {
+      await clockIn({ lat: userGpsPos[0], lng: userGpsPos[1] });
+      await refetchMyAttendances();
+    } catch {
       // hook already shows toast
     }
   };
 
   const handleClockOut = async () => {
+    if (!userGpsPos) {
+      toast.error('Verifikasi GPS terlebih dahulu');
+      return;
+    }
     try {
-      const lat = userAssignedLocation?.latitude ?? -6.2088;
-      const lng = userAssignedLocation?.longitude ?? 106.8456;
-      await clockOut({ lat, lng });
-      setIsClockedIn(false);
+      await clockOut({ lat: userGpsPos[0], lng: userGpsPos[1] });
+      await refetchMyAttendances();
     } catch {
       // hook already shows toast
     }
@@ -222,6 +325,21 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
   const handleDeleteLocation = async (loc: WorkLocation) => {
     if (await showConfirm({ title: 'Hapus Lokasi', description: `Apakah Anda yakin ingin menghapus lokasi "${loc.name}"?` })) {
       try { await removeLocation(loc.id); } catch { /* hook shows toast */ }
+    }
+  };
+
+  const handleCreateAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await createAssignment(assignForm.user_id, assignForm.work_location_id);
+      setShowAssignModal(false);
+      setAssignForm({ user_id: '', work_location_id: '' });
+    } catch { /* hook shows toast */ }
+  };
+
+  const handleDeleteAssignment = async (id: string, name: string) => {
+    if (await showConfirm({ title: 'Hapus Penugasan', description: `Hapus penugasan lokasi untuk ${name}?` })) {
+      try { await removeAssignment(id); } catch { /* hook shows toast */ }
     }
   };
 
@@ -317,15 +435,27 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 </div>
               </div>
               <div>
-                <h3 className="text-xl font-bold text-gray-900">{isClockedIn ? 'Sudah Masuk' : 'Belum Absen'}</h3>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {hasClockedOut ? 'Sudah Absen Pulang' : isClockedIn ? 'Sudah Masuk' : 'Belum Absen'}
+                </h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  {isClockedIn ? `Anda masuk pukul ${clockInTime} hari ini.` : 'Jangan lupa untuk mencatat kehadiran tepat waktu.'}
+                  {hasClockedOut
+                    ? `Anda pulang pukul ${fmtTime(todayRecord?.clock_out)} · Hadir hari ini ✓`
+                    : isClockedIn
+                    ? `Anda masuk pukul ${fmtTime(todayRecord?.clock_in)} hari ini.`
+                    : 'Jangan lupa untuk mencatat kehadiran tepat waktu.'}
                 </p>
               </div>
-              {!isClockedIn ? (
+              {hasClockedOut ? (
+                <div className="w-full py-4 bg-green-50 border-2 border-green-200 text-green-700 rounded-2xl font-bold text-base flex items-center justify-center gap-2">
+                  <CheckCircle2 size={22} />
+                  Absensi Selesai Hari Ini
+                </div>
+              ) : !isClockedIn ? (
                 <button
                   onClick={handleClockIn}
-                  className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 group"
+                  disabled={gpsLoading || !userGpsPos || !isLocationVerified}
+                  className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                 >
                   <CheckCircle2 size={24} className="group-hover:scale-110 transition-transform" />
                   Absen Masuk Sekarang
@@ -333,29 +463,71 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
               ) : (
                 <button
                   onClick={handleClockOut}
-                  className="w-full py-4 border-2 border-primary text-primary rounded-2xl font-bold text-lg hover:bg-primary/5 transition-all flex items-center justify-center gap-2"
+                  disabled={gpsLoading || !userGpsPos}
+                  className="w-full py-4 border-2 border-primary text-primary rounded-2xl font-bold text-lg hover:bg-primary/5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <LogOut size={24} />
                   Absen Pulang
                 </button>
               )}
 
-              <div className="bg-blue-50 w-full p-4 rounded-2xl flex items-center gap-3 border border-blue-100">
-                <Navigation className="text-blue-600" size={20} />
-                <div className="text-left">
-                  <p className="text-[10px] font-bold text-blue-400 uppercase">Titik Koordinat</p>
-                  <p className="text-xs font-bold text-blue-900">{locLat.toFixed(4)}, {locLng.toFixed(4)}</p>
+              {/* GPS Status Panel */}
+              {gpsLoading ? (
+                <div className="bg-blue-50 w-full p-4 rounded-2xl flex items-center gap-3 border border-blue-100 animate-pulse">
+                  <Navigation className="text-blue-500" size={20} />
+                  <p className="text-xs font-bold text-blue-600">Mengambil posisi GPS...</p>
                 </div>
-              </div>
+              ) : gpsError ? (
+                <div className="bg-red-50 w-full p-4 rounded-2xl border border-red-100 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="text-red-500 shrink-0" size={16} />
+                    <p className="text-xs font-bold text-red-700">{gpsError}</p>
+                  </div>
+                  <button
+                    onClick={handleVerifyLocation}
+                    className="w-full py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded-xl transition-colors"
+                  >
+                    Coba Lagi
+                  </button>
+                </div>
+              ) : userGpsPos && isLocationVerified ? (
+                <div className="bg-green-50 w-full p-4 rounded-2xl flex items-center gap-3 border border-green-100">
+                  <CheckCircle2 className="text-green-600 shrink-0" size={20} />
+                  <div className="text-left">
+                    <p className="text-[10px] font-bold text-green-600 uppercase">GPS Terverifikasi</p>
+                    <p className="text-xs font-bold text-green-800">
+                      {distanceM !== null ? `Dalam area (${distanceM}m dari titik absensi)` : 'Posisi GPS aktif'}
+                    </p>
+                  </div>
+                </div>
+              ) : userGpsPos && !isLocationVerified ? (
+                <div className="bg-orange-50 w-full p-4 rounded-2xl flex items-center gap-3 border border-orange-100">
+                  <AlertCircle className="text-orange-500 shrink-0" size={20} />
+                  <div className="text-left">
+                    <p className="text-[10px] font-bold text-orange-500 uppercase">Di Luar Area</p>
+                    <p className="text-xs font-bold text-orange-800">
+                      Jarak: {distanceM}m, maks: {userAssignedLocation?.radius_m ?? 100}m
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-50 w-full p-4 rounded-2xl flex items-center gap-3 border border-gray-100">
+                  <Navigation className="text-gray-400" size={20} />
+                  <div className="text-left">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">GPS Belum Aktif</p>
+                    <p className="text-xs text-gray-500">Klik Verifikasi GPS untuk memulai</p>
+                  </div>
+                </div>
+              )}
 
               <div className="w-full pt-6 border-t border-gray-100 grid grid-cols-2 gap-4">
                 <div className="text-left">
                   <p className="text-xs text-gray-400 font-medium uppercase">Masuk</p>
-                  <p className="font-bold text-gray-800">{clockInTime || '--:--'}</p>
+                  <p className="font-bold text-gray-800">{fmtTime(todayRecord?.clock_in)}</p>
                 </div>
                 <div className="text-left border-l border-gray-100 pl-4">
                   <p className="text-xs text-gray-400 font-medium uppercase">Pulang</p>
-                  <p className="font-bold text-gray-800">--:--</p>
+                  <p className="font-bold text-gray-800">{fmtTime(todayRecord?.clock_out)}</p>
                 </div>
               </div>
             </div>
@@ -369,15 +541,41 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   <Target size={18} className="text-primary" />
                   Peta Lokasi Kerja
                 </h3>
-                <button onClick={handleVerifyLocation} className="text-xs font-bold text-primary hover:underline">
-                  Refresh GPS
+                <button
+                  onClick={handleVerifyLocation}
+                  disabled={gpsLoading}
+                  className="text-xs font-bold text-primary hover:underline disabled:opacity-50"
+                >
+                  {gpsLoading ? 'Mengambil GPS...' : 'Refresh GPS'}
                 </button>
               </div>
               <div className="h-full w-full relative z-0">
-                <MapContainer center={[locLat, locLng]} zoom={15} style={{ height: '100%', width: '100%' }}>
+                <MapContainer
+                  center={userGpsPos ?? [locLat, locLng]}
+                  zoom={16}
+                  style={{ height: '100%', width: '100%' }}
+                >
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  {/* Work location marker (red pin) */}
                   <Marker position={[locLat, locLng]} />
-                  <ChangeView center={[locLat, locLng]} />
+                  {/* Geofence radius circle */}
+                  {userAssignedLocation?.radius_m != null && (
+                    <Circle
+                      center={[locLat, locLng]}
+                      radius={userAssignedLocation.radius_m}
+                      pathOptions={{
+                        color: isLocationVerified ? '#22c55e' : '#ef4444',
+                        fillColor: isLocationVerified ? '#22c55e' : '#ef4444',
+                        fillOpacity: 0.08,
+                        weight: 2,
+                      }}
+                    />
+                  )}
+                  {/* User's current GPS position (blue dot) */}
+                  {userGpsPos && (
+                    <Marker position={userGpsPos} icon={userGpsIcon} />
+                  )}
+                  <ChangeView center={userGpsPos ?? [locLat, locLng]} />
                 </MapContainer>
               </div>
             </div>
@@ -517,6 +715,26 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
         {/* ─── Tab: Rekap Bulanan ──────────────────────────────── */}
         {activeTab === 'recap' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {/* Month/Year Selector */}
+            <div className="p-4 border-b border-gray-100 flex items-center gap-4">
+              <span className="text-sm font-bold text-gray-700">Periode:</span>
+              <select
+                value={recapMonth}
+                onChange={(e) => setRecapMonth(Number(e.target.value))}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white"
+              >
+                {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+                  .map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+              </select>
+              <select
+                value={recapYear}
+                onChange={(e) => setRecapYear(Number(e.target.value))}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white"
+              >
+                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              {recapLoading && <span className="text-xs text-gray-400 animate-pulse">Memuat...</span>}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-gray-50 text-gray-500 text-[10px] font-bold uppercase">
@@ -524,13 +742,13 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                     <th className="px-6 py-4">Nama Karyawan</th>
                     <th className="px-6 py-4 text-center text-green-600">Hadir</th>
                     <th className="px-6 py-4 text-center text-orange-600">Terlambat</th>
-                    <th className="px-6 py-4 text-center text-blue-600">Izin</th>
+                    <th className="px-6 py-4 text-center text-blue-600">Izin/Sakit</th>
                     <th className="px-6 py-4 text-center text-red-600">Alpha</th>
                     <th className="px-6 py-4 text-right">Skor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {mockAttendanceRecap.map((item, idx) => (
+                  {recapData.map((item, idx) => (
                     <tr key={idx} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 font-bold text-sm">{item.name}</td>
                       <td className="px-6 py-4 text-center text-sm">{item.present}</td>
@@ -540,6 +758,11 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                       <td className="px-6 py-4 text-right font-bold text-sm text-primary">{item.score}%</td>
                     </tr>
                   ))}
+                  {!recapLoading && recapData.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-gray-400">Belum ada data absensi untuk periode ini.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -675,6 +898,12 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-gray-800 text-lg">Penempatan Lokasi Per Karyawan</h3>
+                  <button
+                    onClick={() => setShowAssignModal(true)}
+                    className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-md shadow-primary/20"
+                  >
+                    <Plus size={16} /> Assign Karyawan
+                  </button>
                 </div>
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm max-h-[500px] overflow-y-auto">
                   <table className="w-full text-left text-sm">
@@ -682,6 +911,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                       <tr>
                         <th className="px-6 py-4">Karyawan</th>
                         <th className="px-6 py-4">Lokasi Absensi</th>
+                        <th className="px-6 py-4 text-center">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -689,11 +919,19 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                         <tr key={a.id}>
                           <td className="px-6 py-4 font-bold">{a.user?.name ?? '-'}</td>
                           <td className="px-6 py-4 text-gray-600">{a.location?.name ?? '-'}</td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={() => handleDeleteAssignment(a.id, a.user?.name ?? '-')}
+                              className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                       {assignments.length === 0 && (
                         <tr>
-                          <td colSpan={2} className="px-6 py-8 text-center text-gray-400">Belum ada penugasan.</td>
+                          <td colSpan={3} className="px-6 py-8 text-center text-gray-400">Belum ada penugasan.</td>
                         </tr>
                       )}
                     </tbody>
@@ -908,6 +1146,66 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Assign Karyawan ke Lokasi ──────────────────── */}
+      {showAssignModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold">Assign Karyawan ke Lokasi</h3>
+              <button onClick={() => setShowAssignModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateAssignment} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-bold text-gray-700">Pilih Karyawan</label>
+                <select
+                  required
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm"
+                  value={assignForm.user_id}
+                  onChange={(e) => setAssignForm({ ...assignForm, user_id: e.target.value })}
+                >
+                  <option value="">-- Pilih Karyawan --</option>
+                  {usersList.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-bold text-gray-700">Pilih Lokasi Absensi</label>
+                <select
+                  required
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm"
+                  value={assignForm.work_location_id}
+                  onChange={(e) => setAssignForm({ ...assignForm, work_location_id: e.target.value })}
+                >
+                  <option value="">-- Pilih Lokasi --</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-gray-400">* Jika karyawan sudah memiliki penugasan sebelumnya, akan otomatis diganti.</p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAssignModal(false)}
+                  className="flex-1 py-3 border-2 border-gray-100 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+                >
+                  Simpan
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

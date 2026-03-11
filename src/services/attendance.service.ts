@@ -53,7 +53,15 @@ export const attendanceService = {
   },
 
   // ── Attendances ──────────────────────────────────────────────
-  async getAll(params?: { user_id?: string; date?: string; status?: string; page?: number }): Promise<PaginatedResponse<Attendance>> {
+  async getAll(params?: {
+    user_id?: string;
+    date?: string;
+    month?: number;
+    year?: number;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResponse<Attendance>> {
     const res = await api.get<PaginatedResponse<Attendance>>('/attendances', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });

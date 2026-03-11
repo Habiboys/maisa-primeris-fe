@@ -6,7 +6,7 @@
  *   const { attendances, isLoading, clockIn } = useAttendance();
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { USE_MOCK_DATA } from '../lib/config';
 import { mockUserLocationAssignments as mockAssignments, mockAttendances, mockLeaveRequests as mockLeaves, mockWorkLocations as mockLocs } from '../lib/mockAttendance';
@@ -51,6 +51,27 @@ export function useAttendance(params?: { user_id?: string; date?: string }) {
   };
 
   return { attendances, isLoading, refetch: fetchAttendances, clockIn, clockOut };
+}
+
+// ── Hook absensi pribadi (employee self-service) ──────────────────
+
+export function useMyAttendance() {
+  const [myAttendances, setMyAttendances] = useState<Attendance[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchMyAttendances = useCallback(async () => {
+    if (USE_MOCK_DATA) { setMyAttendances(mockAttendances.slice(0, 10)); return; }
+    setIsLoading(true);
+    try {
+      const data = await attendanceService.getMy();
+      setMyAttendances(data);
+    } catch (err) { toast.error(getErrorMessage(err)); }
+    finally { setIsLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchMyAttendances(); }, [fetchMyAttendances]);
+
+  return { myAttendances, isLoading, refetch: fetchMyAttendances };
 }
 
 // ── Hook lokasi kerja ─────────────────────────────────────────────
@@ -190,4 +211,53 @@ export function useLeaveRequests() {
   };
 
   return { leaveRequests, isLoading, refetch: fetchRequests, create, approve, reject, remove };
+}
+
+// ── Hook rekap bulanan (SA view) ──────────────────────────────────
+
+export interface AttendanceRecapEntry {
+  name: string;
+  present: number;
+  late: number;
+  permit: number;
+  alpha: number;
+  score: number;
+}
+
+export function useAttendanceRecap(month: number, year: number) {
+  const [rawData, setRawData] = useState<Attendance[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    if (USE_MOCK_DATA) { setRawData(mockAttendances); return; }
+    setIsLoading(true);
+    try {
+      const res = await attendanceService.getAll({ month, year, limit: 500 });
+      setRawData(res.data);
+    } catch (err) { toast.error(getErrorMessage(err)); }
+    finally { setIsLoading(false); }
+  }, [month, year]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const recap = useMemo<AttendanceRecapEntry[]>(() => {
+    const map = new Map<string, { name: string; present: number; late: number; permit: number; alpha: number }>();
+    for (const a of rawData) {
+      const key  = a.user_id;
+      const name = a.user?.name ?? 'Unknown';
+      if (!map.has(key)) map.set(key, { name, present: 0, late: 0, permit: 0, alpha: 0 });
+      const entry = map.get(key)!;
+      if (a.status === 'Hadir')              entry.present++;
+      else if (a.status === 'Terlambat')     { entry.present++; entry.late++; }
+      else if (a.status === 'Izin' || a.status === 'Sakit') entry.permit++;
+      else if (a.status === 'Alpha')         entry.alpha++;
+    }
+    return Array.from(map.values()).map(e => {
+      const total = e.present + e.permit + e.alpha;
+      const score = total > 0 ? Math.round((e.present / total) * 100) : 100;
+      return { ...e, score };
+    }).sort((a, b) => b.score - a.score);
+  }, [rawData]);
+
+  return { recap, isLoading, refetch: fetchData };
 }
