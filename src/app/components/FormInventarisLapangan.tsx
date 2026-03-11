@@ -368,8 +368,8 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#f3f4f6] rounded-3xl shadow-2xl max-w-[98vw] w-[1400px] h-[92vh] flex flex-col overflow-hidden border border-white/20 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-[#f3f4f6] rounded-3xl shadow-2xl max-w-[98vw] w-[1400px] h-[92vh] flex flex-col overflow-hidden border border-white/20">
         
         {/* Header Section */}
         <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center justify-between flex-shrink-0">

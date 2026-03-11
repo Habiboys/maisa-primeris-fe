@@ -1,17 +1,17 @@
 import {
-  ArrowDownRight,
-  ArrowUpRight,
-  CheckCircle,
-  ChevronDown,
-  Edit2,
-  FileSpreadsheet,
-  FileText,
-  Plus,
-  Search,
-  Trash2,
-  User,
-  Wallet,
-  X
+    ArrowDownRight,
+    ArrowUpRight,
+    CheckCircle,
+    ChevronDown,
+    Edit2,
+    FileSpreadsheet,
+    FileText,
+    Plus,
+    Search,
+    Trash2,
+    User,
+    Wallet,
+    X
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { toast } from 'sonner';
@@ -593,8 +593,8 @@ export function Finance() {
 
       {/* Modal Input Dinamis */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 {editingItem ? <Edit2 size={20} className="text-primary" /> : <Plus size={20} className="text-primary" />}

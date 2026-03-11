@@ -1,26 +1,26 @@
 import {
-  AlertCircle,
-  CalendarDays,
-  CheckCircle2,
-  Clock,
-  Clock3,
-  Eye,
-  LogOut,
-  Navigation,
-  Plus,
-  Search,
-  Target,
-  Trash2,
-  UserCheck,
-  X,
+    AlertCircle,
+    CalendarDays,
+    CheckCircle2,
+    Clock,
+    Clock3,
+    Eye,
+    LogOut,
+    Navigation,
+    Plus,
+    Search,
+    Target,
+    Trash2,
+    UserCheck,
+    X,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import {
-  useAttendance,
-  useConfirmDialog,
-  useLeaveRequests,
-  useLocationAssignments,
-  useWorkLocations,
+    useAttendance,
+    useConfirmDialog,
+    useLeaveRequests,
+    useLocationAssignments,
+    useWorkLocations,
 } from '../../hooks';
 import { mockAttendanceRecap } from '../../lib/mockAttendance';
 import type { Attendance, LeaveRequest, WorkLocation } from '../../types';
@@ -707,7 +707,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
 
       {/* ── Modal: Pengajuan Izin ──────────────────────────────── */}
       {showLeaveModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold">Form Pengajuan Izin</h3>
@@ -768,8 +768,8 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
 
       {/* ── Modal: Tambah Lokasi ───────────────────────────────── */}
       {showAddLocationModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-2">
               {/* Map Side */}
               <div className="h-[300px] md:h-full min-h-[400px] relative z-0">

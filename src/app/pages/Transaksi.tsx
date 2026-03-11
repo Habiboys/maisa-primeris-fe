@@ -1030,8 +1030,8 @@ export function Transaksi() {
 
 function ModalWrapper({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-left max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden text-left max-h-[90vh] overflow-y-auto">
         <div className="p-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
           <h3 className="font-bold">{title}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors"><XCircle size={22} /></button>

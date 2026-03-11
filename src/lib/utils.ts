@@ -128,3 +128,66 @@ export const STATUS_COLOR: Record<string, string> = {
   Completed:     'bg-green-100 text-green-700',
   Delayed:       'bg-red-100 text-red-700',
 };
+
+// ── Kompresi Gambar ──────────────────────────────────────────
+/**
+ * Kompres gambar (File) ke ukuran maksimal (default 3 MB).
+ * Mengembalikan base64 data URL (JPEG).
+ */
+export async function compressImage(
+  file: File,
+  maxBytes = 3 * 1024 * 1024,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const { width, height } = img;
+      let quality = 0.85;
+      let scale = 1.0;
+
+      const compress = (): string => {
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', quality);
+      };
+
+      let result = compress();
+      // Kurangi quality dulu
+      while (quality > 0.3) {
+        const b64 = result.split(',')[1] ?? '';
+        if (b64.length * 0.75 <= maxBytes) break;
+        quality = Math.max(0.3, quality - 0.1);
+        result = compress();
+      }
+      // Lalu kurangi dimensi jika masih terlalu besar
+      while (scale > 0.2) {
+        const b64 = result.split(',')[1] ?? '';
+        if (b64.length * 0.75 <= maxBytes) break;
+        scale = Math.max(0.2, scale - 0.15);
+        result = compress();
+      }
+      resolve(result);
+    };
+    img.src = objectUrl;
+  });
+}
+
+/**
+ * Kompres gambar (File) ke ukuran maksimal dan kembalikan sebagai File JPEG.
+ */
+export async function compressImageToFile(
+  file: File,
+  maxBytes = 3 * 1024 * 1024,
+): Promise<File> {
+  const base64 = await compressImage(file, maxBytes);
+  const res = await fetch(base64);
+  const blob = await res.blob();
+  const newName = file.name.replace(/\.[^.]+$/, '.jpg');
+  return new File([blob], newName, { type: 'image/jpeg' });
+}

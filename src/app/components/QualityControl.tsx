@@ -1,27 +1,29 @@
 import {
-    ArrowLeft,
-    Calendar,
-    Camera,
-    CheckCircle2 as CheckCircle2Icon,
-    CheckCircle as CheckCircleIcon,
-    ChevronDown,
-    ChevronUp,
-    Download,
-    Eye,
-    FileText,
-    Filter,
-    History as HistoryIcon,
-    LayoutList,
-    Save,
-    Search,
-    Send,
-    Trash2,
-    User as UserIcon,
-    XCircle as XCircleIcon
+  ArrowLeft,
+  Calendar,
+  Camera,
+  CheckCircle2 as CheckCircle2Icon,
+  CheckCircle as CheckCircleIcon,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Eye,
+  FileText,
+  Filter,
+  History as HistoryIcon,
+  LayoutList,
+  Save,
+  Search,
+  Send,
+  Trash2,
+  User as UserIcon,
+  XCircle as XCircleIcon
 } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirmDialog, useQCSubmissions, useQCTemplates } from '../../hooks';
+import { compressImage } from '../../lib/utils';
+import { qcService } from '../../services';
 import type { QcSubmission, QcSubmissionInput, QcTemplate } from '../../types';
 
 type ChecklistItemState = {
@@ -40,22 +42,25 @@ type ChecklistSectionState = {
 
 interface QCProps {
   initialProject?: string;
+  initialProjectId?: string;
   initialUnit?: string;
   initialTemplateId?: string;
   onClose?: () => void;
+  onSave?: () => void;
 }
 
-export function QualityControl({ initialProject = '', initialUnit = '', initialTemplateId, onClose }: QCProps) {
+export function QualityControl({ initialProject = '', initialProjectId, initialUnit = '', initialTemplateId, onClose, onSave }: QCProps) {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
   const { templates, isLoading: templatesLoading } = useQCTemplates();
   const {
     submissions,
     isLoading: submissionsLoading,
     create,
+    update,
     submit,
     remove,
     refetch,
-  } = useQCSubmissions({ unit_no: initialUnit || undefined, project_id: initialProject || undefined });
+  } = useQCSubmissions({ unit_no: initialUnit || undefined, project_id: initialProjectId || undefined });
 
   const [activeTab, setActiveTab] = useState<'checklist' | 'history'>(initialUnit ? 'history' : 'checklist');
   const [isInspecting, setIsInspecting] = useState(!!initialUnit);
@@ -71,6 +76,10 @@ export function QualityControl({ initialProject = '', initialUnit = '', initialT
   const [viewDetail, setViewDetail] = useState<QcSubmission | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const draftLoadedRef = useRef(false);
+  // Tracks the ID of an existing Draft that was pre-filled into the form,
+  // so we UPDATE it instead of creating a duplicate.
+  const loadedDraftId = useRef<string | null>(null);
 
   const summarizeSubmission = (submission: QcSubmission) => {
     const results = submission.results ?? [];
@@ -167,17 +176,66 @@ export function QualityControl({ initialProject = '', initialUnit = '', initialT
   }, [initialProject, initialUnit]);
 
   useEffect(() => {
+    if (templatesLoading) return;
     if (selectedTemplateId) return;
-    const fallback = resolveTemplate(initialTemplateId) || templates[0];
-    if (fallback) setSelectedTemplateId(fallback.id);
-  }, [initialTemplateId, resolveTemplate, selectedTemplateId, templates]);
+    if (initialTemplateId) {
+      const target = resolveTemplate(initialTemplateId);
+      if (target) setSelectedTemplateId(target.id);
+    } else if (templates.length > 0) {
+      setSelectedTemplateId(templates[0].id);
+    }
+  }, [initialTemplateId, resolveTemplate, selectedTemplateId, templates, templatesLoading]);
 
   useEffect(() => {
     const tpl = resolveTemplate(selectedTemplateId);
     const nextSections = buildSectionsFromTemplate(tpl);
     setSections(nextSections);
     setExpandedSections(nextSections.slice(0, 2).map(s => s.id));
+    // reset draft pre-fill guard whenever template changes
+    draftLoadedRef.current = false;
+    loadedDraftId.current = null;
   }, [resolveTemplate, selectedTemplateId]);
+
+  // Pre-fill checklist from the latest submission (Draft first, then Submitted) when opening inspection
+  useEffect(() => {
+    if (!isInspecting) { draftLoadedRef.current = false; loadedDraftId.current = null; return; }
+    if (draftLoadedRef.current) return;
+    if (submissionsLoading || sections.length === 0 || !selectedTemplateId) return;
+
+    // unit_no is not stored on the submission row — it lives on the associated unit
+    const matchUnit = (s: import('../../types').QcSubmission) =>
+      (s.unit?.no ?? s.unit_no) === headerData.unit;
+
+    const sorted = [...submissions]
+      .filter(s => matchUnit(s) && s.template_id === selectedTemplateId)
+      .sort((a, b) => new Date(b.updated_at ?? b.created_at ?? 0).getTime() - new Date(a.updated_at ?? a.created_at ?? 0).getTime());
+
+    // prefer Draft so it can still be edited; fall back to latest Submitted
+    const target = sorted.find(s => s.status === 'Draft') ?? sorted[0];
+
+    if (!target) return;
+
+    draftLoadedRef.current = true;
+    // Only track the ID if it's a Draft — Submitted cannot be updated
+    loadedDraftId.current = target.status === 'Draft' ? target.id : null;
+
+    qcService.getSubmission(target.id).then(full => {
+      if (!full.results?.length) return;
+      setSections(prev => prev.map(section => ({
+        ...section,
+        items: section.items.map(item => {
+          const res = full.results!.find(r => r.item_id === item.id);
+          if (!res) return item;
+          return {
+            ...item,
+            result: (res.result as 'OK' | 'Not OK' | null) ?? null,
+            notes: res.notes ?? '',
+            photo: res.photo_url ?? null,
+          };
+        }),
+      })));
+    }).catch(() => {/* silent */});
+  }, [isInspecting, submissionsLoading, sections.length, submissions, headerData.unit, selectedTemplateId]);
 
   const totalItems = sections.reduce((acc, section) => acc + section.items.length, 0);
   const okItems = sections.reduce((acc, section) => acc + section.items.filter(i => i.result === 'OK').length, 0);
@@ -198,22 +256,23 @@ export function QualityControl({ initialProject = '', initialUnit = '', initialT
     }));
   };
 
-  const handleFileUpload = (sectionId: string, itemId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (sectionId: string, itemId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      updateItem(sectionId, itemId, 'photo', reader.result as string);
+    try {
+      const compressed = await compressImage(file);
+      updateItem(sectionId, itemId, 'photo', compressed);
       toast.success('Foto berhasil diunggah');
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      toast.error('Gagal memproses foto');
+    }
   };
 
   const buildPayloadResults = (): NonNullable<QcSubmissionInput['results']> => {
     return sections.flatMap(section =>
       section.items.map(item => ({
         item_id: item.id,
-        result: item.result,
+        result: item.result ?? undefined,
         notes: item.notes || null,
         photo_url: item.photo || null,
       }))
@@ -229,25 +288,46 @@ export function QualityControl({ initialProject = '', initialUnit = '', initialT
       toast.error('Pilih template QC terlebih dahulu');
       return;
     }
+    if (status === 'Submitted') {
+      const unfilled = sections.flatMap(s => s.items).filter(item => !item.result);
+      if (unfilled.length > 0) {
+        toast.error(`${unfilled.length} item belum diisi. Semua item harus dicentang sebelum submit.`);
+        return;
+      }
+    }
     setIsSaving(true);
     try {
-      const payload = {
-        project_id: headerData.project,
+      const resultsPayload = buildPayloadResults();
+      const basePayload = {
+        project_id: initialProjectId || headerData.project,
         unit_no: headerData.unit,
         template_id: selectedTemplateId,
         submission_date: headerData.date,
-        status,
-        results: buildPayloadResults(),
+        results: resultsPayload,
       };
+
+      const existingDraftId = loadedDraftId.current;
+
       if (status === 'Submitted') {
-        const draft = await create(payload);
-        if (draft?.id) {
-          await submit(draft.id);
+        if (existingDraftId) {
+          // UPDATE existing draft with latest data, then submit it
+          await update(existingDraftId, basePayload, true);
+          await submit(existingDraftId, true);
+        } else {
+          // No existing draft → create one, then submit
+          const draft = await create({ ...basePayload, status: 'Draft' }, true);
+          if (draft?.id) await submit(draft.id, true);
         }
       } else {
-        await create(payload);
+        // Saving as Draft
+        if (existingDraftId) {
+          await update(existingDraftId, basePayload, true);
+        } else {
+          await create({ ...basePayload, status: 'Draft' }, true);
+        }
       }
-      toast.success(status === 'Submitted' ? 'Laporan QC disubmit' : 'Draft QC disimpan');
+      toast.success(status === 'Submitted' ? 'Laporan QC berhasil disubmit' : 'Draft QC berhasil disimpan');
+      onSave?.();
       setIsInspecting(false);
       setActiveTab('history');
       await refetch({ unit_no: headerData.unit });
@@ -267,7 +347,7 @@ export function QualityControl({ initialProject = '', initialUnit = '', initialT
 
   if (isInspecting) {
     return (
-      <div className="fixed inset-0 z-[60] flex flex-col bg-white animate-in slide-in-from-bottom duration-300">
+      <div className="fixed inset-0 z-[60] flex flex-col bg-white">
         {ConfirmDialogElement}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10 shadow-sm">
           <div className="flex items-center gap-4">
@@ -671,9 +751,9 @@ export function QualityControl({ initialProject = '', initialUnit = '', initialT
 
       {/* Modal Detail History (Read-only View) */}
       {viewDetail && (
-        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setViewDetail(null)}></div>
-          <div className="relative w-full max-w-5xl max-h-[90vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setViewDetail(null)}></div>
+          <div className="relative w-full max-w-5xl max-h-[90vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
               <div className="flex gap-4">
                 <div className="p-3 bg-primary/10 rounded-xl text-primary">

@@ -744,8 +744,8 @@ export function Marketing() {
 
       {/* ═══ Add Lead Modal ════════════════════════════════════ */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-left max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-left max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
               <h3 className="text-xl font-bold">Tambah Prospek Baru</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -865,8 +865,8 @@ export function Marketing() {
 
       {/* ═══ Edit Lead Modal ═══════════════════════════════════ */}
       {isEditModalOpen && editingLead && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-left max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-left max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
               <h3 className="text-xl font-bold">Edit Data Prospek</h3>
               <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -992,8 +992,8 @@ export function Marketing() {
 
       {/* ═══ Add Marketing Modal ═══════════════════════════════ */}
       {isAddMarketingModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden text-left">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold">Tambah Marketing Baru</h3>
               <button onClick={() => setIsAddMarketingModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -1072,8 +1072,8 @@ export function Marketing() {
 
       {/* ═══ Edit Marketing Modal ══════════════════════════════ */}
       {isEditMarketingModalOpen && editingMarketing && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden text-left">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold">Edit Data Marketing</h3>
               <button onClick={() => setIsEditMarketingModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">

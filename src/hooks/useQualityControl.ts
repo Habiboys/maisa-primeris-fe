@@ -257,7 +257,7 @@ export function useQCSubmissions(initialFilters?: { project_id?: string; unit_no
 
   useEffect(() => { fetchSubmissions(initialFilters); }, [fetchSubmissions, initialFilters?.project_id, initialFilters?.unit_no, initialFilters?.unit_id, initialFilters?.status]);
 
-  const create = async (payload: QcSubmissionInput) => {
+  const create = async (payload: QcSubmissionInput, silent = false) => {
     if (USE_MOCK_DATA) {
       const newId = `QC-${new Date().getFullYear()}-${String(submissions.length + 1).padStart(3, '0')}`;
       const newSubmission: QcSubmission = {
@@ -281,19 +281,19 @@ export function useQCSubmissions(initialFilters?: { project_id?: string; unit_no
         updated_at: new Date().toISOString(),
       };
       setSubmissions(prev => [newSubmission, ...prev]);
-      toast.success('Submission QC (mock) dibuat');
+      if (!silent) toast.success('Submission QC (mock) dibuat');
       return newSubmission;
     }
 
     try {
       const res = await qcService.createSubmission(payload);
-      toast.success('Submission QC dibuat');
+      if (!silent) toast.success('Submission QC dibuat');
       await fetchSubmissions(initialFilters);
       return res;
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  const update = async (id: string, payload: Partial<QcSubmissionInput>) => {
+  const update = async (id: string, payload: Partial<QcSubmissionInput>, silent = false) => {
     if (USE_MOCK_DATA) {
       setSubmissions(prev => prev.map(s => {
         if (s.id !== id) return s;
@@ -310,26 +310,26 @@ export function useQCSubmissions(initialFilters?: { project_id?: string; unit_no
         }
         return updated;
       }));
-      toast.success('Submission QC (mock) diperbarui');
+      if (!silent) toast.success('Submission QC (mock) diperbarui');
       return submissions.find(s => s.id === id) ?? null;
     }
     try {
       const res = await qcService.updateSubmission(id, payload);
-      toast.success('Submission QC diperbarui');
+      if (!silent) toast.success('Submission QC diperbarui');
       await fetchSubmissions(initialFilters);
       return res;
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  const submit = async (id: string) => {
+  const submit = async (id: string, silent = false) => {
     if (USE_MOCK_DATA) {
       setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: 'Submitted', updated_at: new Date().toISOString() } : s));
-      toast.success('Submission QC (mock) disubmit');
+      if (!silent) toast.success('Submission QC (mock) disubmit');
       return submissions.find(s => s.id === id) ?? null;
     }
     try {
       const res = await qcService.submitSubmission(id);
-      toast.success('Submission QC disubmit');
+      if (!silent) toast.success('Submission QC disubmit');
       await fetchSubmissions(initialFilters);
       return res;
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }

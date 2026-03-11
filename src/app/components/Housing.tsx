@@ -1,27 +1,27 @@
 import {
-    AlertCircle,
-    Building2,
-    Calculator,
-    CheckCircle,
-    ChevronDown,
-    Clock,
-    Download,
-    Edit,
-    Eye,
-    Home,
-    Plus,
-    Search,
-    Trash2,
-    X,
+  AlertCircle,
+  Building2,
+  Calculator,
+  CheckCircle,
+  ChevronDown,
+  Clock,
+  Download,
+  Edit,
+  Eye,
+  Home,
+  Plus,
+  Search,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useConfirmDialog, useHousingPayments, useHousingUnits } from "../../hooks";
 import { formatRupiah } from "../../lib/utils";
 import type {
-    CreateHousingUnitPayload,
-    HousingPaymentHistory,
-    HousingUnit,
-    HousingUnitStatus,
+  CreateHousingUnitPayload,
+  HousingPaymentHistory,
+  HousingUnit,
+  HousingUnitStatus,
 } from "../../types";
 
 // ─── Status Badge ────────────────────────────────────────────────
@@ -400,9 +400,9 @@ export default function Housing() {
 
       {/* ── Add / Edit Modal ──────────────────────────────────── */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowAddModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b">
               <h2 className="text-lg font-semibold">{editingUnit ? "Edit Unit" : "Tambah Unit Baru"}</h2>
               <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
@@ -532,9 +532,9 @@ export default function Housing() {
 
       {/* ── Status Update Modal ───────────────────────────────── */}
       {showStatusModal && statusTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowStatusModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowStatusModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm">
             <div className="flex items-center justify-between p-5 border-b">
               <h2 className="text-lg font-semibold">Ubah Status</h2>
               <button onClick={() => setShowStatusModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
@@ -584,8 +584,8 @@ export default function Housing() {
 
       {/* ── Detail Drawer ─────────────────────────────────────── */}
       {selectedUnit && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedUnit(null)} />
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedUnit(null)} />
           <div className="relative bg-white w-full max-w-md h-full overflow-y-auto shadow-xl animate-slide-in-right">
             {/* Drawer header */}
             <div className="sticky top-0 bg-white z-10 border-b">
@@ -716,7 +716,7 @@ export default function Housing() {
                   <div className="bg-gray-50 rounded-xl p-4">
                     <p className="text-sm text-gray-600">Harga Unit</p>
                     <p className="text-xl font-bold text-gray-900">
-                      {selectedUnit.harga_jual != null ? formatRupiah(selectedUnit.harga_jual) : "-"}
+                      {selectedUnit.harga_jual != null ? formatRupiIah(selectedUnit.harga_jual) : "-"}
                     </p>
                   </div>
 

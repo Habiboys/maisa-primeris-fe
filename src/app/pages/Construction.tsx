@@ -1,29 +1,29 @@
 import {
-    AlertTriangle as AlertTriangleIcon,
-    Box,
-    Calendar,
-    CheckCircle2 as CheckCircle2Icon,
-    ChevronRight,
-    ClipboardList,
-    Clock as ClockIcon,
-    Construction as ConstructionIcon,
-    Edit2,
-    Filter,
-    History as HistoryIcon,
-    Home,
-    Info,
-    LayoutGrid,
-    Map as MapIcon,
-    MapPin,
-    MoreHorizontal,
-    Pencil,
-    Plus,
-    Search,
-    Settings,
-    Trash2,
-    TrendingUp,
-    Users,
-    X
+  AlertTriangle as AlertTriangleIcon,
+  Box,
+  Calendar,
+  CheckCircle2 as CheckCircle2Icon,
+  ChevronRight,
+  ClipboardList,
+  Clock as ClockIcon,
+  Construction as ConstructionIcon,
+  Edit2,
+  Filter,
+  History as HistoryIcon,
+  Home,
+  Info,
+  LayoutGrid,
+  Map as MapIcon,
+  MapPin,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+  TrendingUp,
+  Users,
+  X
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useProjects, useQCTemplates } from '../../hooks';
 import { USE_MOCK_DATA } from '../../lib/config';
 import { mockConstructionProjects, type ConstructionStatus, type InventoryLog, type Project, type ProjectUnit, type WorkLog } from '../../lib/mockConstruction';
+import { compressImageToFile } from '../../lib/utils';
 import { projectService } from '../../services';
 import type { ConstructionStatus as ApiCS, Project as ApiProject, ProjectUnit as ApiProjectUnit } from '../../types';
 import { QCTemplateManager } from '../components/QCTemplateManager';
@@ -46,23 +47,30 @@ const mapApiUnitToUi = (unit: ApiProjectUnit): ProjectUnit => ({
   qcTemplateId: unit.qc_template_id,
 });
 
-const mapApiProjectToUi = (project: ApiProject): Project => ({
-  id: project.id,
-  name: project.name,
-  type: project.type,
-  location: project.location ?? '-',
-  unitsCount: project.units_count ?? (project.units?.length ?? 0),
-  progress: project.progress ?? 0,
-  status: project.status,
-  deadline: project.deadline ?? '-',
-  lead: project.lead ?? '-',
-  units: (project.units ?? []).map(mapApiUnitToUi),
-  inventory: {},
-  logs: [],
-  timeSchedule: [],
-  qcTemplateId: project.qc_template_id,
-  constructionStatus: project.construction_status,
-});
+const mapApiProjectToUi = (project: ApiProject): Project => {
+  const units = (project.units ?? []).map(mapApiUnitToUi);
+  const clusterProgress = units.length > 0
+    ? Math.round(units.reduce((sum, u) => sum + (u.progress ?? 0), 0) / units.length)
+    : 0;
+  return {
+    id: project.id,
+    name: project.name,
+    type: project.type,
+    location: project.location ?? '-',
+    unitsCount: project.units_count ?? units.length,
+    // cluster: avg of unit progress; standalone: 0 initially, patched by useEffect after constructionStatuses loads
+    progress: project.type === 'cluster' ? clusterProgress : 0,
+    status: project.status,
+    deadline: project.deadline ?? '-',
+    lead: project.lead ?? '-',
+    units,
+    inventory: {},
+    logs: [],
+    timeSchedule: [],
+    qcTemplateId: project.qc_template_id,
+    constructionStatus: project.construction_status,
+  };
+};
 
 /*
 const initialProjects: Project[] = [
@@ -580,6 +588,16 @@ export function Construction() {
     setConstructionStatuses(apiStatuses.map(mapApiCSToUi));
   }, [apiStatuses]);
 
+  // Patch standalone project progress using constructionStatuses (runs after both are ready)
+  useEffect(() => {
+    if (USE_MOCK_DATA) return;
+    setProjects(prev => prev.map(p => {
+      if (p.type !== 'standalone' || !p.constructionStatus) return p;
+      const cs = constructionStatuses.find(s => s.name === p.constructionStatus);
+      return cs ? { ...p, progress: cs.progress } : p;
+    }));
+  }, [constructionStatuses]);
+
   const [showStatusManager, setShowStatusManager] = useState(false);
   const [editingStatus, setEditingStatus] = useState<ConstructionStatus | null>(null);
   const [statusForm, setStatusForm] = useState({ name: '', progress: '', color: 'bg-blue-50 text-blue-600' });
@@ -606,6 +624,9 @@ export function Construction() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showEditStandaloneModal, setShowEditStandaloneModal] = useState(false);
+  const [showUpdateProgressModal, setShowUpdateProgressModal] = useState(false);
+  const [updateProgressUnit, setUpdateProgressUnit] = useState<ProjectUnit | null>(null);
+  const [updateProgressStatus, setUpdateProgressStatus] = useState('');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editingUnit, setEditingUnit] = useState<ProjectUnit | null>(null);
 
@@ -619,10 +640,12 @@ export function Construction() {
     activity: '', 
     workers: '', 
     progress: '', 
+    date: new Date().toISOString().split('T')[0],
     status: 'Normal' as 'Normal' | 'Lembur' | 'Kendala',
     weather: 'Cerah' as 'Cerah' | 'Berawan' | 'Hujan' | 'Hujan Lebat',
     photos: [] as string[]
   });
+  const [reportFiles, setReportFiles] = useState<File[]>([]);
 
   // Helper: Convert status to progress percentage (dynamic from master data)
   const getProgressFromStatus = (statusName: string): number => {
@@ -1007,6 +1030,40 @@ export function Construction() {
     setStandaloneForm({ name: '', location: '', lead: '', deadline: '', constructionStatus: '', qcTemplateId: '' });
   };
 
+  const handleSaveUpdateProgress = async () => {
+    if (!updateProgressUnit || !updateProgressStatus || !selectedProjectId) {
+      toast.error('Pilih unit dan status terlebih dahulu');
+      return;
+    }
+    const progress = getProgressFromStatus(updateProgressStatus);
+    try {
+      if (!USE_MOCK_DATA) {
+        await projectService.updateUnit(selectedProjectId, updateProgressUnit.no, {
+          status: updateProgressStatus,
+          progress,
+        } as Partial<import('../../types').ProjectUnit>);
+        await refetchProjects();
+        toast.success(`Progress unit ${updateProgressUnit.no} berhasil diupdate`);
+      } else {
+        setProjects(prev => prev.map(p => {
+          if (p.id === selectedProjectId) {
+            return {
+              ...p,
+              units: p.units.map(u =>
+                u.no === updateProgressUnit.no ? { ...u, status: updateProgressStatus, progress } : u
+              ),
+            };
+          }
+          return p;
+        }));
+        toast.success(`Progress unit ${updateProgressUnit.no} berhasil diupdate`);
+      }
+    } catch { /* hook shows toast */ }
+    setShowUpdateProgressModal(false);
+    setUpdateProgressUnit(null);
+    setUpdateProgressStatus('');
+  };
+
   const handleAddNewUnit = () => {
     setEditingUnit(null);
     setUnitForm({ no: '', tipe: '', status: 'Belum Mulai', qcTemplateId: '' });
@@ -1037,13 +1094,12 @@ export function Construction() {
           formData.append('activity', reportForm.activity);
           formData.append('worker_count', String(Number(reportForm.workers) || 0));
           formData.append('progress_added', String(Number(reportForm.progress) || 0));
+          formData.append('date', reportForm.date || new Date().toISOString().split('T')[0]);
           formData.append('status', reportForm.status);
           formData.append('weather', reportForm.weather);
-          // Attach photos if any
-          reportForm.photos.forEach((photo) => {
-            if (photo instanceof File) {
-              formData.append('photos', photo as unknown as Blob);
-            }
+          // Attach compressed photos
+          reportFiles.forEach((file) => {
+            formData.append('photos', file);
           });
           await projectService.createWorkLog(selectedProjectId, formData);
           toast.success(`Laporan Unit ${reportForm.unitNo} berhasil disimpan`);
@@ -1111,11 +1167,13 @@ export function Construction() {
 
     setShowReportModal(false);
     setEditingLog(null);
+    setReportFiles([]);
     setReportForm({ unitNo: '', activity: '', workers: '', progress: '', status: 'Normal', weather: 'Cerah', photos: [] });
   };
 
   const handleEditWorkLog = (log: WorkLog) => {
     setEditingLog(log);
+    setReportFiles([]);
     setReportForm({
       unitNo: log.unitNo,
       activity: log.activity,
@@ -1140,13 +1198,14 @@ export function Construction() {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files) {
-      const fileArray = Array.from(files);
-      const photoUrls = fileArray.map(file => URL.createObjectURL(file));
-      setReportForm(prev => ({ ...prev, photos: [...prev.photos, ...photoUrls] }));
-    }
+    if (!files) return;
+    const fileArray = Array.from(files);
+    const compressed = await Promise.all(fileArray.map(f => compressImageToFile(f)));
+    const previewUrls = compressed.map(f => URL.createObjectURL(f));
+    setReportFiles(prev => [...prev, ...compressed]);
+    setReportForm(prev => ({ ...prev, photos: [...prev.photos, ...previewUrls] }));
   };
 
   const handleAction = (_label: string) => { /* placeholder for quick stat clicks */ };
@@ -1260,31 +1319,13 @@ export function Construction() {
       {showChecklistForm && (
         <QualityControl 
           initialProject={selectedProject?.name || ''} 
-          initialUnit={selectedUnitForQC?.no} 
+          initialProjectId={selectedProject?.id}
+          initialUnit={selectedUnitForQC?.no}
+          initialTemplateId={selectedUnitForQC?.qcTemplateId || selectedProject?.qcTemplateId || undefined}
+          onSave={refetchProjects}
           onClose={() => {
             setShowChecklistForm(false);
           }}
-          initialSections={(() => {
-            // Get template ID from unit or project
-            const templateId = selectedUnitForQC?.qcTemplateId || selectedProject?.qcTemplateId;
-            if (!templateId) return undefined;
-            
-            // Find template
-            const template = qcTemplates.find(t => t.id === templateId);
-            if (!template) return undefined;
-            
-            // Convert template sections to checklist sections
-            return template.sections.map(section => ({
-              title: section.title,
-              items: section.items.map(item => ({
-                id: item.id,
-                description: item.description,
-                status: null as 'OK' | 'NOT OK' | null,
-                photo: null as string | null,
-                remarks: ''
-              }))
-            }));
-          })()}
         />
       )}
 
@@ -1322,7 +1363,17 @@ export function Construction() {
               <button className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
                 Export PDF
               </button>
-              <button className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+              <button
+                onClick={() => {
+                  if (selectedProject.type === 'standalone') {
+                    handleEditStandalone();
+                  } else {
+                    setUpdateProgressUnit(null);
+                    setUpdateProgressStatus('');
+                    setShowUpdateProgressModal(true);
+                  }
+                }}
+                className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
                 Update Progres
               </button>
             </div>
@@ -2784,7 +2835,7 @@ export function Construction() {
 
       {/* Construction Status Manager Modal - COMPACT */}
       {showStatusManager && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
             {/* Header - Compact */}
             <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-3 text-white flex items-center justify-between">
@@ -2940,7 +2991,8 @@ export function Construction() {
         onClose={() => {
           setShowReportModal(false);
           setEditingLog(null);
-          setReportForm({ unitNo: '', activity: '', workers: '', progress: '', status: 'Normal', weather: 'Cerah', photos: [] });
+          setReportFiles([]);
+          setReportForm({ unitNo: '', activity: '', workers: '', progress: '', date: new Date().toISOString().split('T')[0], status: 'Normal', weather: 'Cerah', photos: [] });
         }} 
         title={editingLog ? `Edit Laporan Unit ${editingLog.unitNo}` : "Input Laporan Harian (Per Unit)"}
       >
@@ -3033,7 +3085,10 @@ export function Construction() {
                     <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-100">
                       <img src={url} className="w-full h-full object-cover" alt="preview" />
                       <button 
-                        onClick={() => setReportForm(prev => ({ ...prev, photos: prev.photos.filter((_, idx) => idx !== i) }))}
+                        onClick={() => {
+                          setReportForm(prev => ({ ...prev, photos: prev.photos.filter((_, idx) => idx !== i) }));
+                          setReportFiles(prev => prev.filter((_, idx) => idx !== i));
+                        }}
                         className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X size={12} />
@@ -3133,7 +3188,7 @@ export function Construction() {
 
       {/* Quality Control History Modal */}
       {showQCHistory && selectedProject && selectedUnitForQC && (
-        <div className="fixed inset-0 z-[70] flex flex-col bg-white animate-in slide-in-from-bottom duration-300">
+        <div className="fixed inset-0 z-[70] flex flex-col bg-white">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10 shadow-sm">
             <div className="flex items-center gap-4">
               <div className="p-2 bg-primary/10 rounded-lg text-primary">
@@ -3155,6 +3210,7 @@ export function Construction() {
             <div className="max-w-6xl mx-auto">
               <QualityControl 
                 initialProject={selectedProject.name} 
+                initialProjectId={selectedProject.id}
                 initialUnit={selectedUnitForQC.no} 
                 onClose={() => setShowQCHistory(false)} 
               />
@@ -3163,6 +3219,74 @@ export function Construction() {
         </div>
       )}
     </div>
+
+      {/* Modal Update Progres Cluster */}
+      <Modal
+        isOpen={showUpdateProgressModal}
+        onClose={() => { setShowUpdateProgressModal(false); setUpdateProgressUnit(null); setUpdateProgressStatus(''); }}
+        title="Update Progres Unit"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">Pilih Unit</label>
+            <select
+              value={updateProgressUnit?.no ?? ''}
+              onChange={(e) => {
+                const unit = selectedProject?.units.find(u => u.no === e.target.value) ?? null;
+                setUpdateProgressUnit(unit);
+                setUpdateProgressStatus(unit?.status ?? '');
+              }}
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            >
+              <option value="">- Pilih Unit -</option>
+              {(selectedProject?.units ?? []).map(u => (
+                <option key={u.no} value={u.no}>{u.no} — {u.tipe} ({u.progress}%)</option>
+              ))}
+            </select>
+          </div>
+          {updateProgressUnit && (
+            <div className="p-3 bg-gray-50 rounded-xl text-xs text-gray-600">
+              Status saat ini: <span className="font-bold text-gray-900">{updateProgressUnit.status}</span> — <span className="font-bold text-primary">{updateProgressUnit.progress}%</span>
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">Status Baru</label>
+            <select
+              value={updateProgressStatus}
+              onChange={(e) => setUpdateProgressStatus(e.target.value)}
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            >
+              <option value="">- Pilih Status -</option>
+              {constructionStatuses.sort((a, b) => a.order - b.order).map(s => (
+                <option key={s.id} value={s.name}>{s.name} ({s.progress}%)</option>
+              ))}
+            </select>
+          </div>
+          {updateProgressStatus && (
+            <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+              <p className="text-xs text-blue-900">
+                Progress akan diset ke <span className="font-bold">{getProgressFromStatus(updateProgressStatus)}%</span>
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 mt-6">
+          <button
+            onClick={handleSaveUpdateProgress}
+            disabled={!updateProgressUnit || !updateProgressStatus}
+            className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Simpan
+          </button>
+          <button
+            onClick={() => { setShowUpdateProgressModal(false); setUpdateProgressUnit(null); setUpdateProgressStatus(''); }}
+            className="px-6 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300 transition-colors"
+          >
+            Batal
+          </button>
+        </div>
+      </Modal>
 
       {/* Modal Edit Standalone */}
       <Modal 
@@ -3330,8 +3454,8 @@ function QuickStat({ icon, label, value, onClick }: { icon: React.ReactNode, lab
 function Modal({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <h3 className="font-bold text-gray-900">{title}</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={20} /></button>

@@ -1,17 +1,17 @@
 import {
-  ArrowLeft,
-  Calendar,
-  Check,
-  CreditCard,
-  Edit2,
-  FileText,
-  History,
-  MapPin,
-  Plus,
-  Printer,
-  Trash2,
-  User,
-  X
+    ArrowLeft,
+    Calendar,
+    Check,
+    CreditCard,
+    Edit2,
+    FileText,
+    History,
+    MapPin,
+    Plus,
+    Printer,
+    Trash2,
+    User,
+    X
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -340,8 +340,8 @@ export function FinanceDetail({ id, onBack }: FinanceDetailProps) {
 
       {/* Modal Form Tambah/Edit Data */}
       {showModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 uppercase text-xs tracking-widest">
                 {editingItem ? 'Edit' : 'Tambah'} {
