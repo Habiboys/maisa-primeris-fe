@@ -6,14 +6,14 @@
 import api from '../lib/api';
 import { cleanParams } from '../lib/utils';
 import type {
-    ApiResponse,
-    ConstructionStatus,
-    InventoryLog,
-    PaginatedResponse,
-    Project,
-    ProjectUnit,
-    TimeScheduleItem,
-    WorkLog,
+  ApiResponse,
+  ConstructionStatus,
+  InventoryLog,
+  PaginatedResponse,
+  Project,
+  ProjectUnit,
+  TimeScheduleItem,
+  WorkLog,
 } from '../types';
 
 export const projectService = {
@@ -62,6 +62,11 @@ export const projectService = {
 
   async removeUnit(projectId: string, unitNo: string): Promise<void> {
     await api.delete(`/projects/${projectId}/units/${unitNo}`);
+  },
+
+  async bulkCreateUnits(projectId: string, payload: { count: number; prefix: string; tipe?: string }): Promise<ProjectUnit[]> {
+    const res = await api.post<ApiResponse<ProjectUnit[]>>(`/projects/${projectId}/bulk-units`, payload);
+    return res.data.data;
   },
 
   // ── Construction Statuses ────────────────────────────────────

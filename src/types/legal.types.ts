@@ -20,6 +20,7 @@ export interface LegalHousingUnit {
   unit_type?: string;
   luas_tanah?: number;
   luas_bangunan?: number;
+  project_id?: string;
 }
 
 // ── PPJB ─────────────────────────────────────────────────────────
@@ -100,6 +101,8 @@ export type PindahUnitStatus = 'Proses' | 'Selesai' | 'Batal';
 export interface PindahUnit {
   id: string;
   consumer_id?: string;
+  housing_unit_id_lama?: string;
+  housing_unit_id_baru?: string;
   unit_lama?: string;
   unit_baru?: string;
   tanggal_pindah?: string;
@@ -111,9 +114,11 @@ export interface PindahUnit {
   updated_at: string;
   // relasi
   consumer?: LegalConsumer;
+  housingUnitLama?: LegalHousingUnit;
+  housingUnitBaru?: LegalHousingUnit;
 }
 
-export type CreatePindahUnitPayload = Omit<PindahUnit, 'id' | 'created_at' | 'updated_at' | 'consumer'>;
+export type CreatePindahUnitPayload = Omit<PindahUnit, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnitLama' | 'housingUnitBaru'>;
 
 // ── Pembatalan ───────────────────────────────────────────────────
 
@@ -122,6 +127,7 @@ export type PembatalanStatus = 'Proses' | 'Selesai';
 export interface Pembatalan {
   id: string;
   consumer_id?: string;
+  housing_unit_id?: string;
   unit_code?: string;
   tanggal_batal?: string;
   alasan?: string;
@@ -132,6 +138,7 @@ export interface Pembatalan {
   updated_at: string;
   // relasi
   consumer?: LegalConsumer;
+  housingUnit?: LegalHousingUnit;
 }
 
-export type CreatePembatalanPayload = Omit<Pembatalan, 'id' | 'created_at' | 'updated_at' | 'consumer'>;
+export type CreatePembatalanPayload = Omit<Pembatalan, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'>;

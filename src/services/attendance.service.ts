@@ -8,6 +8,7 @@ import { cleanParams } from '../lib/utils';
 import type {
     ApiResponse,
     Attendance,
+    AttendanceSetting,
     ClockInPayload,
     CreateLeaveRequestPayload,
     LeaveRequest,
@@ -16,7 +17,28 @@ import type {
     WorkLocation,
 } from '../types';
 
+const buildClockPayload = (payload: ClockInPayload): FormData | ClockInPayload => {
+  if (!payload.photo) return payload;
+
+  const form = new FormData();
+  form.append('lat', String(payload.lat));
+  form.append('lng', String(payload.lng));
+  form.append('photo', payload.photo);
+  return form;
+};
+
 export const attendanceService = {
+  // ── Attendance Settings ─────────────────────────────────────
+  async getAttendanceSettings(): Promise<AttendanceSetting> {
+    const res = await api.get<ApiResponse<AttendanceSetting>>('/attendance-settings');
+    return res.data.data;
+  },
+
+  async updateAttendanceSettings(payload: Partial<AttendanceSetting>): Promise<AttendanceSetting> {
+    const res = await api.put<ApiResponse<AttendanceSetting>>('/attendance-settings', payload);
+    return res.data.data;
+  },
+
   // ── Work Locations ───────────────────────────────────────────
   async getWorkLocations(): Promise<WorkLocation[]> {
     const res = await api.get<ApiResponse<WorkLocation[]>>('/work-locations');
@@ -74,17 +96,33 @@ export const attendanceService = {
   },
 
   async clockIn(payload: ClockInPayload): Promise<Attendance> {
-    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-in', payload);
+    const body = buildClockPayload(payload);
+    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-in', body, body instanceof FormData
+      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      : undefined);
     return res.data.data;
   },
 
   async clockOut(payload: ClockInPayload): Promise<Attendance> {
-    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-out', payload);
+    const body = buildClockPayload(payload);
+    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-out', body, body instanceof FormData
+      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      : undefined);
     return res.data.data;
   },
 
   // ── Leave Requests ───────────────────────────────────────────
-  async getLeaveRequests(params?: { page?: number; limit?: number }): Promise<PaginatedResponse<LeaveRequest>> {
+  async getLeaveRequests(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+    user_id?: string;
+    search?: string;
+    start_date?: string;
+    end_date?: string;
+    date?: string;
+  }): Promise<PaginatedResponse<LeaveRequest>> {
     const res = await api.get<PaginatedResponse<LeaveRequest>>('/leave-requests', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });

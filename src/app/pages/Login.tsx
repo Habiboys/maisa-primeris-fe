@@ -1,5 +1,6 @@
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import logoMain from "../../assets/c1369a79bc00e989fba6fc14517246c6364e83d7.png";
 import { useAuth } from '../../context/AuthContext';
@@ -56,7 +57,7 @@ export function Login() {
               </p>
             </div>
             <p className="text-sm text-white/60">
-              © 2026 Maisa Primeris App. All rights reserved.
+              © 2026 Primeris One. All rights reserved.
             </p>
           </div>
         </div>
@@ -84,7 +85,7 @@ export function Login() {
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@maisaprimeris.com"
+                  placeholder="email anda"
                   className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all text-sm"
                 />
               </div>
@@ -116,9 +117,9 @@ export function Login() {
                 <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary" />
                 <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors font-medium">Ingat saya</span>
               </label>
-              <button type="button" className="text-sm font-bold text-primary hover:underline transition-all">
+              <Link to="/forgot-password" className="text-sm font-bold text-primary hover:underline transition-all">
                 Lupa password?
-              </button>
+              </Link>
             </div>
 
             <button 

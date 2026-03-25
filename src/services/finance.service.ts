@@ -21,10 +21,13 @@ import type {
 export const financeService = {
   // ── Transactions ─────────────────────────────────────────────
   async getTransactions(params?: TransactionListParams): Promise<PaginatedResponse<Transaction>> {
-    const res = await api.get<PaginatedResponse<Transaction>>('/transactions', {
+    const res = await api.get<PaginatedResponse<Transaction> & { data?: Transaction[] }>('/transactions', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });
-    return res.data;
+    const body = res.data as Record<string, unknown>;
+    const data = Array.isArray(body?.data) ? body.data : (body?.data as Record<string, unknown>)?.data ?? [];
+    const pagination = (body?.pagination as PaginatedResponse<Transaction>['pagination']) ?? { page: 1, limit: 20, total: 0, total_pages: 1 };
+    return { data: data as Transaction[], pagination };
   },
 
   async getTransactionById(id: string): Promise<Transaction> {
@@ -48,12 +51,24 @@ export const financeService = {
 
   async getSummary(): Promise<TransactionSummary> {
     const res = await api.get<ApiResponse<TransactionSummary>>('/transactions/summary');
-    return res.data.data;
+    const body = res.data as { data?: TransactionSummary };
+    return (body?.data ?? body) as TransactionSummary;
   },
 
-  getExportUrl(): string {
-    const token = localStorage.getItem('token');
-    return `${api.defaults.baseURL}/transactions/export?token=${token}`;
+  async exportTransactions(params?: TransactionListParams): Promise<Blob> {
+    const res = await api.get('/transactions/export', {
+      params: params ? cleanParams(params as Record<string, unknown>) : undefined,
+      responseType: 'blob',
+    });
+    return res.data as Blob;
+  },
+
+  async exportConsumers(params?: { search?: string; blok?: string }): Promise<Blob> {
+    const res = await api.get('/consumers/export', {
+      params: params ? cleanParams(params as Record<string, unknown>) : undefined,
+      responseType: 'blob',
+    });
+    return res.data as Blob;
   },
 
   // ── Consumers (Piutang) ──────────────────────────────────────
@@ -86,7 +101,8 @@ export const financeService = {
   // ── Payment Histories ────────────────────────────────────────
   async getPayments(consumerId: string): Promise<PaymentHistory[]> {
     const res = await api.get<ApiResponse<PaymentHistory[]>>(`/consumers/${consumerId}/payments`);
-    return res.data.data;
+    const raw = res.data as { data?: PaymentHistory[] } | PaymentHistory[];
+    return Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
   },
 
   async createPayment(consumerId: string, payload: CreatePaymentPayload): Promise<PaymentHistory> {

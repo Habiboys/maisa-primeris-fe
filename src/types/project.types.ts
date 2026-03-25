@@ -16,9 +16,6 @@ export interface Project {
   progress: number;
   status: ProjectStatus;
   deadline?: string;
-  lead?: string;
-  qc_template_id?: string;
-  construction_status?: string;
   created_at: string;
   updated_at: string;
   // relasi yang bisa di-include

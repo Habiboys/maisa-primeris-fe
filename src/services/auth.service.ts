@@ -7,7 +7,15 @@
  */
 
 import api from '../lib/api';
-import type { ApiResponse, AuthUser, ChangePasswordPayload, LoginPayload, LoginResponse } from '../types';
+import type {
+  ApiResponse,
+  AuthUser,
+  ChangePasswordPayload,
+  ForgotPasswordPayload,
+  LoginPayload,
+  LoginResponse,
+  ResetPasswordPayload,
+} from '../types';
 
 export const authService = {
   /** POST /auth/login → dapat token + data user */
@@ -30,5 +38,23 @@ export const authService = {
   /** PUT /auth/change-password */
   async changePassword(payload: ChangePasswordPayload): Promise<void> {
     await api.put('/auth/change-password', payload);
+  },
+
+  /** POST /auth/forgot-password */
+  async forgotPassword(payload: ForgotPasswordPayload): Promise<void> {
+    await api.post('/auth/forgot-password', payload);
+  },
+
+  /** GET /auth/verify-reset-token?token=xxx */
+  async verifyResetToken(token: string): Promise<{ valid: boolean; email: string }> {
+    const res = await api.get<ApiResponse<{ valid: boolean; email: string }>>('/auth/verify-reset-token', {
+      params: { token },
+    });
+    return res.data.data;
+  },
+
+  /** POST /auth/reset-password */
+  async resetPassword(payload: ResetPasswordPayload): Promise<void> {
+    await api.post('/auth/reset-password', payload);
   },
 };

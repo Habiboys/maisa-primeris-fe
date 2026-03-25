@@ -261,6 +261,16 @@ export const sopService = {
     await api.delete(`/material-requests/${id}`);
   },
 
+  async getPermintaanPreviewHtml(payload: Record<string, unknown>): Promise<string> {
+    const res = await api.post('/sop/preview/permintaan', payload, { responseType: 'text' });
+    return res.data as string;
+  },
+
+  async getPermintaanPdfBlob(payload: Record<string, unknown>): Promise<Blob> {
+    const res = await api.post('/sop/pdf/permintaan', payload, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
   // ── Tanda Terima Gudang ──────────────────────────────────────
   async getTTG(params?: { status?: string; page?: number }): Promise<PaginatedResponse<TandaTerimaGudang>> {
     const res = await api.get('/warehouse-receipts', {
@@ -284,6 +294,21 @@ export const sopService = {
     await api.delete(`/warehouse-receipts/${id}`);
   },
 
+  async getTTGPreviewHtml(payload: Record<string, unknown>): Promise<string> {
+    const res = await api.post('/sop/preview/ttg', payload, { responseType: 'text' });
+    return res.data as string;
+  },
+
+  async getTTGPdfBlob(payload: Record<string, unknown>): Promise<Blob> {
+    const res = await api.post('/sop/pdf/ttg', payload, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
+  async getTTGPdfBlobById(id: string): Promise<Blob> {
+    const res = await api.get(`/warehouse-receipts/${id}/pdf`, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
   // ── Barang Keluar ────────────────────────────────────────────
   async getBarangKeluar(params?: { status?: string; page?: number }): Promise<PaginatedResponse<BarangKeluar>> {
     const res = await api.get('/goods-out', {
@@ -300,6 +325,21 @@ export const sopService = {
 
   async removeBarangKeluar(id: string): Promise<void> {
     await api.delete(`/goods-out/${id}`);
+  },
+
+  async getBarangKeluarPreviewHtml(payload: Record<string, unknown>): Promise<string> {
+    const res = await api.post('/sop/preview/barang-keluar', payload, { responseType: 'text' });
+    return res.data as string;
+  },
+
+  async getBarangKeluarPdfBlob(payload: Record<string, unknown>): Promise<Blob> {
+    const res = await api.post('/sop/pdf/barang-keluar', payload, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
+  async getBarangKeluarPdfBlobById(id: string): Promise<Blob> {
+    const res = await api.get(`/goods-out/${id}/pdf`, { responseType: 'blob' });
+    return res.data as Blob;
   },
 
   // ── Inventaris Lapangan ──────────────────────────────────────
@@ -325,6 +365,21 @@ export const sopService = {
     await api.delete(`/inventory/${id}`);
   },
 
+  async getInventarisPreviewHtml(payload: Record<string, unknown>): Promise<string> {
+    const res = await api.post('/sop/preview/inventaris', payload, { responseType: 'text' });
+    return res.data as string;
+  },
+
+  async getInventarisPdfBlob(payload: Record<string, unknown>): Promise<Blob> {
+    const res = await api.post('/sop/pdf/inventaris', payload, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
+  async getInventarisPdfBlobById(id: string): Promise<Blob> {
+    const res = await api.get(`/inventory/${id}/pdf`, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
   // ── Surat Jalan ──────────────────────────────────────────────
   async getSuratJalan(params?: { status?: string; page?: number }): Promise<PaginatedResponse<SuratJalan>> {
     const res = await api.get('/delivery-orders', {
@@ -346,5 +401,20 @@ export const sopService = {
 
   async removeSuratJalan(id: string): Promise<void> {
     await api.delete(`/delivery-orders/${id}`);
+  },
+
+  async getSuratJalanPreviewHtml(payload: Record<string, unknown>): Promise<string> {
+    const res = await api.post('/sop/preview/surat-jalan', payload, { responseType: 'text' });
+    return res.data as string;
+  },
+
+  async getSuratJalanPdfBlob(payload: Record<string, unknown>): Promise<Blob> {
+    const res = await api.post('/sop/pdf/surat-jalan', payload, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
+  async getSuratJalanPdfBlobById(id: string): Promise<Blob> {
+    const res = await api.get(`/delivery-orders/${id}/pdf`, { responseType: 'blob' });
+    return res.data as Blob;
   },
 };

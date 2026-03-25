@@ -58,7 +58,7 @@ export const SOP: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('permintaan');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Hooks — sumber data (respects USE_MOCK_DATA) + CRUD operations
+  // Hooks — sumber data dari API + operasi CRUD
   const {
     permintaanList, setPermintaanList,
     create: createPermintaan, remove: removePermintaan,

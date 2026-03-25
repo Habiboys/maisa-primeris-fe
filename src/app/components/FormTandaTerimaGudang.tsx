@@ -1,6 +1,8 @@
 import { PackageCheck, Plus, Printer, Save, Trash2, X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { sopService } from '../../services/sop.service';
+import { getErrorMessage } from '../../lib/utils';
 
 interface MaterialItem {
   namaBarang: string;
@@ -76,8 +78,6 @@ export const FormTandaTerimaGudang: React.FC<FormTandaTerimaProps> = ({
     }
   }, [data, isOpen]);
 
-  if (!isOpen) return null;
-
   const handleAddItem = () => {
     if (!currentItem.namaBarang.trim()) {
       toast.error('Nama barang harus diisi');
@@ -102,167 +102,44 @@ export const FormTandaTerimaGudang: React.FC<FormTandaTerimaProps> = ({
     setMaterialRows(materialRows.filter((_, i) => i !== index));
   };
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const printContent = document.getElementById('form-terima-print-content');
-    if (!printContent) return;
+  const getPreviewPayload = useCallback(() => ({
+    noTerima: formData.noTerima,
+    supplier: formData.supplier,
+    penerima: formData.penerima,
+    items: materialRows.map(r => ({ namaBarang: r.namaBarang, qty: r.qty, satuan: r.satuan })),
+    mengetahui,
+    pengirim,
+  }), [formData.noTerima, formData.supplier, formData.penerima, materialRows, mengetahui, pengirim]);
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Tanda Terima Gudang</title>
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            
-            @page {
-              size: A4;
-              margin: 1.5cm;
-            }
-            
-            body {
-              font-family: 'Arial', sans-serif;
-              font-size: 11pt;
-              line-height: 1.4;
-              color: #000;
-            }
-            
-            .header {
-              margin-bottom: 20px;
-              position: relative;
-            }
+  useEffect(() => {
+    if (!isOpen) return;
+    previewDebounceRef.current && clearTimeout(previewDebounceRef.current);
+    previewDebounceRef.current = setTimeout(() => {
+      setPreviewLoading(true);
+      sopService.getTTGPreviewHtml(getPreviewPayload()).then(html => {
+        setPreviewHtml(html);
+      }).catch(() => setPreviewHtml('')).finally(() => setPreviewLoading(false));
+    }, 600);
+    return () => { previewDebounceRef.current && clearTimeout(previewDebounceRef.current); };
+  }, [isOpen, getPreviewPayload]);
 
-            .header-content {
-              padding-right: 120px;
-            }
-
-            .logo-box {
-              position: absolute;
-              top: 0;
-              right: 0;
-              width: 100px;
-              height: 100px;
-              border: 2px solid #000;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background-color: #1a1a1a;
-            }
-
-            .logo-text {
-              color: #b7860f;
-              font-size: 16pt;
-              font-weight: bold;
-              font-style: italic;
-              text-align: center;
-              line-height: 1.2;
-            }
-            
-            .header h1 {
-              font-size: 14pt;
-              font-weight: bold;
-              margin-bottom: 5px;
-            }
-            
-            .header .address {
-              font-size: 9pt;
-              margin-bottom: 15px;
-            }
-            
-            .header h2 {
-              font-size: 12pt;
-              font-weight: bold;
-              text-decoration: underline;
-              margin-top: 10px;
-              text-align: center;
-            }
-            
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 20px 0;
-            }
-            
-            table, th, td {
-              border: 1px solid #000;
-            }
-            
-            th {
-              background-color: #f5f5f5;
-              padding: 8px;
-              text-align: center;
-              font-weight: bold;
-              font-size: 10pt;
-            }
-            
-            td {
-              padding: 8px 6px;
-              font-size: 10pt;
-            }
-            
-            .footer {
-              margin-top: 30px;
-            }
-            
-            .signature-section {
-              display: flex;
-              justify-content: space-between;
-              margin-top: 20px;
-            }
-            
-            .signature-box {
-              width: 30%;
-              text-align: center;
-            }
-            
-            .signature-box .label {
-              font-weight: bold;
-              margin-bottom: 60px;
-            }
-            
-            .signature-box .name {
-              border-top: 1px solid #000;
-              padding-top: 5px;
-              display: inline-block;
-              min-width: 150px;
-            }
-
-            .signature-box .subtitle {
-              font-size: 9pt;
-              margin-top: 3px;
-            }
-            
-            .location-date {
-              text-align: right;
-              margin-bottom: 10px;
-              font-size: 10pt;
-            }
-            
-            @media print {
-              body {
-                print-color-adjust: exact;
-                -webkit-print-color-adjust: exact;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+  const handleCetakPdf = async () => {
+    try {
+      const blob = await sopService.getTTGPdfBlob(getPreviewPayload());
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `TTG-${formData.noTerima || 'draft'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF berhasil diunduh');
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    }
   };
 
   const handleSave = () => {
@@ -283,11 +160,8 @@ export const FormTandaTerimaGudang: React.FC<FormTandaTerimaProps> = ({
       items: filledItems,
       mengetahui,
       pengirim,
-      tanggal: new Date().toLocaleDateString('id-ID', { 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
-      })
+      // gunakan format ISO (YYYY-MM-DD) supaya backend/moment tidak warning
+      tanggal: new Date().toISOString().slice(0, 10),
     };
 
     if (onSave) {
@@ -307,11 +181,7 @@ export const FormTandaTerimaGudang: React.FC<FormTandaTerimaProps> = ({
     setMaterialRows([...materialRows, ...Array(5).fill({ namaBarang: '', qty: 0, satuan: '', namaRekanan: '' })]);
   };
 
-  const currentDate = new Date().toLocaleDateString('id-ID', { 
-    day: 'numeric', 
-    month: 'long', 
-    year: 'numeric' 
-  });
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -330,11 +200,11 @@ export const FormTandaTerimaGudang: React.FC<FormTandaTerimaProps> = ({
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={handlePrint}
+              onClick={handleCetakPdf}
               className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
             >
               <Printer size={18} />
-              <span>Cetak Preview</span>
+              <span>Cetak PDF</span>
             </button>
             <button
               onClick={handleSave}
@@ -515,113 +385,26 @@ export const FormTandaTerimaGudang: React.FC<FormTandaTerimaProps> = ({
             </div>
           </div>
 
-          {/* Right Side: LIVE PREVIEW */}
-          <div className="flex-1 bg-[#4b5563] overflow-y-auto p-12 flex justify-center no-scrollbar">
-            <div 
-              className="w-[750px] bg-white shadow-2xl min-h-[950px] p-12 flex flex-col origin-top transform scale-[1.02]" 
-              id="form-terima-print-content"
-            >
-              {/* Header Surat */}
-              <div className="flex items-center justify-between border-b-4 border-gray-900 pb-6 mb-8">
-                <div>
-                  <h1 className="text-2xl font-black text-gray-900 tracking-tighter leading-none mb-2">MAISA PRIMERIS NANGGALO</h1>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-                    JL. Batang Marao No.9, RT.3 RW.10, Alai Parak Kopi,<br/>
-                    Kec. Padang Utara, Kota Padang - Sumatera Barat
-                  </p>
+          {/* Right Side: Preview (sama dengan PDF dari server) */}
+          <div className="flex-1 bg-gray-200 overflow-hidden flex flex-col min-w-0">
+            <div className="px-4 py-2 bg-gray-300 text-xs font-medium text-gray-600 border-b border-gray-300">
+              Preview — sama dengan hasil cetak PDF
+            </div>
+            <div className="flex-1 overflow-auto p-4 flex justify-center">
+              {previewLoading ? (
+                <div className="self-center text-gray-500 text-sm">Memuat preview...</div>
+              ) : previewHtml ? (
+                <div className="bg-white shadow-sm max-w-[210mm] w-full min-h-[297mm] overflow-auto">
+                  <iframe
+                    title="Preview TTG"
+                    srcDoc={previewHtml}
+                    className="w-full min-h-[297mm] border-0"
+                    style={{ minHeight: '297mm' }}
+                  />
                 </div>
-                <div className="w-20 h-20 bg-gray-900 flex flex-col items-center justify-center border-2 border-gray-900 p-2">
-                  <span className="text-primary font-black italic text-sm">MAISA</span>
-                  <span className="text-white text-[6px] tracking-[0.2em] font-bold border-t border-white/20 mt-1 pt-1">GUDANG</span>
-                </div>
-              </div>
-
-              <div className="text-center mb-10">
-                <h2 className="text-xl font-black uppercase underline decoration-2 underline-offset-4 tracking-wider">
-                  Tanda Terima Gudang
-                </h2>
-                <p className="text-xs font-bold text-gray-700 mt-1">Nomor: {formData.noTerima || '____________________'}</p>
-                <p className="text-[10px] font-bold text-gray-400 mt-2">INTERNAL WAREHOUSE DOCUMENT</p>
-              </div>
-
-              {/* Meta Data */}
-              <div className="flex justify-between items-start mb-10 text-sm">
-                <div className="space-y-1.5 flex-1">
-                  <div className="flex gap-4">
-                    <span className="w-28 text-[10px] font-black text-gray-400 uppercase">Diterima Dari</span>
-                    <span className="font-black text-gray-900">: {formData.supplier || '_______________________'}</span>
-                  </div>
-                  <div className="flex gap-4">
-                    <span className="w-28 text-[10px] font-black text-gray-400 uppercase">Penerima</span>
-                    <span className="font-black text-gray-900">: {formData.penerima || '_______________________'}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-black text-gray-900">Padang, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                  <p className="text-[10px] text-primary font-black tracking-widest uppercase mt-1">Maisa Logistics</p>
-                </div>
-              </div>
-
-              {/* Table Material */}
-              <div className="flex-1">
-                <table className="w-full border-2 border-gray-900">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border-2 border-gray-900 p-3 text-center text-[10px] font-black w-12 uppercase tracking-tighter">No</th>
-                      <th className="border-2 border-gray-900 p-3 text-left text-[10px] font-black uppercase tracking-tighter">Daftar Material / Barang Masuk</th>
-                      <th className="border-2 border-gray-900 p-3 text-center text-[10px] font-black w-24 uppercase tracking-tighter">Volume</th>
-                      <th className="border-2 border-gray-900 p-3 text-center text-[10px] font-black w-24 uppercase tracking-tighter">Satuan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materialRows.length > 0 ? materialRows.map((row, idx) => (
-                      <tr key={idx} className="bg-white">
-                        <td className="border-2 border-gray-900 p-3 text-center text-xs font-bold">{idx + 1}</td>
-                        <td className="border-2 border-gray-900 p-3 text-xs font-black uppercase">{row.namaBarang}</td>
-                        <td className="border-2 border-gray-900 p-3 text-center text-sm font-black text-primary">{row.qty}</td>
-                        <td className="border-2 border-gray-900 p-3 text-center text-xs font-bold">{row.satuan}</td>
-                      </tr>
-                    )) : (
-                      Array(10).fill(0).map((_, idx) => (
-                        <tr key={idx} className="h-9">
-                          <td className="border-2 border-gray-900 p-3 text-center text-xs text-gray-100">{idx + 1}</td>
-                          <td className="border-2 border-gray-900 p-3"></td>
-                          <td className="border-2 border-gray-900 p-3"></td>
-                          <td className="border-2 border-gray-900 p-3"></td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Signature Area */}
-              <div className="mt-20 grid grid-cols-3 gap-12 text-center">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-24 tracking-widest pb-1 border-b border-gray-100">Mengetahui</span>
-                  <div className="border-t-2 border-gray-900 pt-2">
-                    <span className="text-xs font-black uppercase tracking-tight">{mengetahui || '..........................'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-24 tracking-widest pb-1 border-b border-gray-100">Pengirim / Rekanan</span>
-                  <div className="border-t-2 border-gray-900 pt-2">
-                    <span className="text-xs font-black uppercase tracking-tight">{pengirim || '..........................'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-24 tracking-widest pb-1 border-b border-gray-100">Logistik / Gudang</span>
-                  <div className="border-t-2 border-gray-900 pt-2">
-                    <span className="text-xs font-black uppercase tracking-tight">{formData.penerima || '..........................'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footnote */}
-              <div className="mt-auto pt-10 text-[7px] text-gray-400 font-bold uppercase tracking-[0.4em] flex justify-between items-center border-t border-gray-50">
-                <span>Maisa Primeris Warehouse Management System</span>
-                <span>Dokumen Sah Logistik</span>
-              </div>
+              ) : (
+                <div className="self-center text-gray-400 text-sm">Isi form untuk melihat preview</div>
+              )}
             </div>
           </div>
         </div>

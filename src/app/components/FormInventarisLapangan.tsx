@@ -1,6 +1,8 @@
 import { ClipboardList, Plus, Printer, Save, Trash2, X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { sopService } from '../../services/sop.service';
+import { getErrorMessage } from '../../lib/utils';
 
 interface InventarisItem {
   uraian: string;
@@ -91,8 +93,6 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
     }
   }, [data, isOpen]);
 
-  if (!isOpen) return null;
-
   const handleAddItem = () => {
     if (!currentItem.uraian.trim()) {
       toast.error('Uraian barang harus diisi');
@@ -116,163 +116,43 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
     setInventarisRows(inventarisRows.filter((_, i) => i !== index));
   };
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const printContent = document.getElementById('form-inventaris-print-content');
-    if (!printContent) return;
+  const getPreviewPayload = useCallback(() => ({
+    items: inventarisRows,
+    disetujui,
+    diperiksa,
+    penanggungJawab,
+  }), [inventarisRows, disetujui, diperiksa, penanggungJawab]);
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Daftar Inventaris Lapangan</title>
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            
-            @page {
-              size: A4 landscape;
-              margin: 1.5cm;
-            }
-            
-            body {
-              font-family: 'Arial', sans-serif;
-              font-size: 10pt;
-              line-height: 1.3;
-              color: #000;
-            }
-            
-            .header {
-              margin-bottom: 15px;
-              position: relative;
-            }
+  useEffect(() => {
+    if (!isOpen) return;
+    previewDebounceRef.current && clearTimeout(previewDebounceRef.current);
+    previewDebounceRef.current = setTimeout(() => {
+      setPreviewLoading(true);
+      sopService.getInventarisPreviewHtml(getPreviewPayload())
+        .then(html => setPreviewHtml(html))
+        .catch(() => setPreviewHtml(''))
+        .finally(() => setPreviewLoading(false));
+    }, 600);
+    return () => { previewDebounceRef.current && clearTimeout(previewDebounceRef.current); };
+  }, [isOpen, getPreviewPayload]);
 
-            .header-content {
-              padding-right: 120px;
-            }
-
-            .logo-box {
-              position: absolute;
-              top: 0;
-              right: 0;
-              width: 100px;
-              height: 100px;
-              border: 2px solid #000;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background-color: #1a1a1a;
-            }
-
-            .logo-text {
-              color: #b7860f;
-              font-size: 16pt;
-              font-weight: bold;
-              font-style: italic;
-              text-align: center;
-              line-height: 1.2;
-            }
-            
-            .header h1 {
-              font-size: 12pt;
-              font-weight: bold;
-              margin-bottom: 3px;
-            }
-            
-            .header .address {
-              font-size: 8pt;
-              margin-bottom: 10px;
-            }
-            
-            .header h2 {
-              font-size: 11pt;
-              font-weight: bold;
-              text-align: center;
-              margin-top: 8px;
-            }
-            
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 15px 0;
-            }
-            
-            table, th, td {
-              border: 1px solid #000;
-            }
-            
-            th {
-              background-color: #f5f5f5;
-              padding: 6px 4px;
-              text-align: center;
-              font-weight: bold;
-              font-size: 9pt;
-            }
-            
-            td {
-              padding: 5px 4px;
-              font-size: 9pt;
-            }
-            
-            .footer {
-              margin-top: 20px;
-            }
-            
-            .signature-section {
-              display: flex;
-              justify-content: space-between;
-              margin-top: 15px;
-            }
-            
-            .signature-box {
-              width: 30%;
-              text-align: center;
-            }
-            
-            .signature-box .label {
-              font-weight: bold;
-              margin-bottom: 50px;
-              font-size: 9pt;
-            }
-            
-            .signature-box .name {
-              border-top: 1px solid #000;
-              padding-top: 5px;
-              display: inline-block;
-              min-width: 150px;
-              font-size: 9pt;
-            }
-
-            .location-date {
-              text-align: right;
-              margin-bottom: 10px;
-              font-size: 9pt;
-            }
-            
-            @media print {
-              body {
-                print-color-adjust: exact;
-                -webkit-print-color-adjust: exact;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+  const handleCetakPdf = async () => {
+    try {
+      const blob = await sopService.getInventarisPdfBlob(getPreviewPayload());
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'InventarisLapangan.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF berhasil diunduh');
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    }
   };
 
   const handleSave = () => {
@@ -309,8 +189,6 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
       if (onSave) {
         onSave(saveData);
       }
-      
-      toast.success('Inventaris berhasil diupdate');
     } else {
       // Save batch items
       const filledItems = inventarisRows.filter(item => item.uraian.trim() !== '');
@@ -335,8 +213,6 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
       if (onSave) {
         onSave(saveData);
       }
-      
-      toast.success(`${filledItems.length} inventaris berhasil disimpan`);
     }
     
     onClose();
@@ -361,6 +237,8 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
     })]);
   };
 
+  if (!isOpen) return null;
+
   const currentDate = new Date().toLocaleDateString('id-ID', { 
     day: 'numeric', 
     month: 'long', 
@@ -384,11 +262,11 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={handlePrint}
+              onClick={handleCetakPdf}
               className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
             >
               <Printer size={18} />
-              <span>Cetak (Landscape)</span>
+              <span>Cetak PDF</span>
             </button>
             <button
               onClick={handleSave}
@@ -583,104 +461,26 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
             </div>
           </div>
 
-          {/* Right Side: LIVE PREVIEW (LANDSCAPE) */}
-          <div className="flex-1 bg-[#4b5563] overflow-y-auto p-12 flex justify-center no-scrollbar">
-            <div 
-              className="w-[1100px] bg-white shadow-2xl min-h-[750px] p-12 flex flex-col origin-top transform scale-[0.95]" 
-              id="form-inventaris-print-content"
-            >
-              {/* Header Surat */}
-              <div className="flex justify-between items-center border-b-4 border-gray-900 pb-6 mb-8">
-                <div>
-                  <h1 className="text-2xl font-black text-gray-900 tracking-tighter leading-none mb-2">MAISA PRIMERIS NANGGALO</h1>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-                    JL. Batang Marao No.9, RT.3 RW.10, Alai Parak Kopi, Kec. Padang Utara, Kota Padang
-                  </p>
+          {/* Right Side: Preview (sama dengan PDF dari server) */}
+          <div className="flex-1 bg-gray-200 overflow-hidden flex flex-col min-w-0">
+            <div className="px-4 py-2 bg-gray-300 text-xs font-medium text-gray-600 border-b border-gray-300">
+              Preview — sama dengan hasil cetak PDF
+            </div>
+            <div className="flex-1 overflow-auto p-4 flex justify-center">
+              {previewLoading ? (
+                <div className="self-center text-gray-500 text-sm">Memuat preview...</div>
+              ) : previewHtml ? (
+                <div className="bg-white shadow-sm max-w-[297mm] w-full min-h-[210mm] overflow-auto">
+                  <iframe
+                    title="Preview Inventaris Lapangan"
+                    srcDoc={previewHtml}
+                    className="w-full min-h-[210mm] border-0"
+                    style={{ minHeight: '210mm' }}
+                  />
                 </div>
-                <div className="text-right">
-                  <h2 className="text-2xl font-black uppercase tracking-widest text-gray-900">
-                    Daftar Inventaris Lapangan
-                  </h2>
-                  <p className="text-[10px] font-bold text-primary tracking-[0.2em] mt-1 uppercase italic underline decoration-2 underline-offset-4">Project Asset Management</p>
-                </div>
-              </div>
-
-              {/* Table Material */}
-              <div className="flex-1">
-                <table className="w-full border-2 border-gray-900">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border-2 border-gray-900 p-2 text-center text-[9px] font-black w-10 uppercase">No</th>
-                      <th className="border-2 border-gray-900 p-2 text-left text-[9px] font-black uppercase">Uraian / Deskripsi Barang</th>
-                      <th className="border-2 border-gray-900 p-2 text-center text-[9px] font-black w-32 uppercase">Tgl Peminjaman</th>
-                      <th className="border-2 border-gray-900 p-2 text-center text-[9px] font-black w-32 uppercase">Tgl Kembali</th>
-                      <th className="border-2 border-gray-900 p-2 text-center text-[9px] font-black w-20 uppercase">Satuan</th>
-                      <th className="border-2 border-gray-900 p-2 text-center text-[9px] font-black w-20 uppercase">Volume</th>
-                      <th className="border-2 border-gray-900 p-2 text-center text-[9px] font-black w-24 uppercase">Kondisi</th>
-                      <th className="border-2 border-gray-900 p-2 text-center text-[9px] font-black w-24 uppercase">TTD</th>
-                      <th className="border-2 border-gray-900 p-2 text-left text-[9px] font-black w-40 uppercase">Lokasi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inventarisRows.length > 0 ? inventarisRows.map((row, idx) => (
-                      <tr key={idx} className="bg-white">
-                        <td className="border border-gray-900 p-2 text-center text-xs font-bold">{idx + 1}</td>
-                        <td className="border border-gray-900 p-2 text-xs font-black uppercase leading-tight">{row.uraian}</td>
-                        <td className="border border-gray-900 p-2 text-center text-xs font-medium">{row.tanggalPeminjaman || '-'}</td>
-                        <td className="border border-gray-900 p-2 text-center text-xs font-medium">{row.tanggalPengembalian || '-'}</td>
-                        <td className="border border-gray-900 p-2 text-center text-xs font-bold uppercase">{row.satuan}</td>
-                        <td className="border border-gray-900 p-2 text-center text-sm font-black text-primary">{row.volume}</td>
-                        <td className="border border-gray-900 p-2 text-center text-[10px] font-black">{row.kondisi}</td>
-                        <td className="border border-gray-900 p-2 text-center text-xs italic text-gray-300">...</td>
-                        <td className="border border-gray-900 p-2 text-xs font-medium">{row.lokasi}</td>
-                      </tr>
-                    )) : (
-                      Array(12).fill(0).map((_, idx) => (
-                        <tr key={idx} className="h-8">
-                          <td className="border border-gray-900 p-2 text-center text-xs text-gray-100">{idx + 1}</td>
-                          <td className="border border-gray-900 p-2"></td>
-                          <td className="border border-gray-900 p-2"></td>
-                          <td className="border border-gray-900 p-2"></td>
-                          <td className="border border-gray-900 p-2"></td>
-                          <td className="border border-gray-900 p-2"></td>
-                          <td className="border border-gray-900 p-2"></td>
-                          <td className="border border-gray-900 p-2"></td>
-                          <td className="border border-gray-900 p-2"></td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Signature Area */}
-              <div className="mt-12 grid grid-cols-3 gap-12 text-center">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-20 tracking-widest">Disetujui</span>
-                  <div className="border-t-2 border-gray-900 pt-2 mx-10">
-                    <span className="text-xs font-black uppercase">{disetujui || '..........................'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-20 tracking-widest">Diperiksa</span>
-                  <div className="border-t-2 border-gray-900 pt-2 mx-10">
-                    <span className="text-xs font-black uppercase">{diperiksa || '..........................'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-4 tracking-widest">Padang, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                  <span className="text-[10px] font-bold text-gray-500 mb-16 uppercase">Logistik / Gudang</span>
-                  <div className="border-t-2 border-gray-900 pt-2 mx-10">
-                    <span className="text-xs font-black uppercase">{penanggungJawab || '..........................'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footnote */}
-              <div className="mt-auto pt-8 text-[7px] text-gray-400 font-bold uppercase tracking-[0.5em] flex justify-between items-center border-t border-gray-50">
-                <span>Maisa Primeris Cluster Project Management</span>
-                <span>Asset-Log-V2.0</span>
-              </div>
+              ) : (
+                <div className="self-center text-gray-400 text-sm">Isi form untuk melihat preview</div>
+              )}
             </div>
           </div>
         </div>

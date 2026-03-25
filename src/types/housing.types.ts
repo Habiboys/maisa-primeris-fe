@@ -11,15 +11,25 @@ export interface HousingUnit {
   id: string;
   unit_code: string;
   project_id?: string;
+  project_unit_id?: string;
   unit_type?: string;
+  id_rumah?: string;
+  no_sertifikat?: string;
+  panjang_kanan?: number;
+  panjang_kiri?: number;
+  lebar_depan?: number;
+  lebar_belakang?: number;
   luas_tanah?: number;
   luas_bangunan?: number;
+  harga_per_meter?: number;
   harga_jual?: number;
+  daya_listrik?: number;
   consumer_id?: string;
   status: HousingUnitStatus;
   akad_date?: string;
   serah_terima_date?: string;
   notes?: string;
+  photo_url?: string;
   created_at: string;
   updated_at: string;
   // relasi
@@ -42,15 +52,25 @@ export interface HousingPaymentHistory {
 export interface CreateHousingUnitPayload {
   unit_code: string;
   project_id?: string;
+  project_unit_id?: string;
   unit_type?: string;
+  id_rumah?: string;
+  no_sertifikat?: string;
+  panjang_kanan?: number;
+  panjang_kiri?: number;
+  lebar_depan?: number;
+  lebar_belakang?: number;
   luas_tanah?: number;
   luas_bangunan?: number;
+  harga_per_meter?: number;
   harga_jual?: number;
+  daya_listrik?: number;
   consumer_id?: string;
   status?: HousingUnitStatus;
   akad_date?: string;
   serah_terima_date?: string;
   notes?: string;
+  photo_url?: string;
 }
 
 export interface CreateHousingPaymentPayload {

@@ -11,6 +11,7 @@
 export * from './api.types';
 export * from './attendance.types';
 export * from './auth.types';
+export * from './company.types';
 export * from './finance.types';
 export * from './housing.types';
 export * from './legal.types';

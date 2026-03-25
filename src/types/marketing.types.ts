@@ -22,14 +22,15 @@ export interface Lead {
   source?: string;
   marketing_id?: string;
   project_id?: string;
+  housing_unit_id?: string;
   interest?: string;
   status: LeadStatus;
   notes?: string;
   follow_up_date?: string;
   created_at: string;
   updated_at: string;
-  // relasi
   marketingPerson?: MarketingPerson;
+  housingUnit?: { id: string; unit_code: string; unit_type?: string; project_id?: string };
 }
 
 export interface CreateLeadPayload {
@@ -39,6 +40,7 @@ export interface CreateLeadPayload {
   source?: string;
   marketing_id?: string;
   project_id?: string;
+  housing_unit_id?: string;
   interest?: string;
   status?: LeadStatus;
   notes?: string;
@@ -52,6 +54,7 @@ export interface LeadListParams {
   status?: LeadStatus;
   source?: string;
   marketing_id?: string;
+  project_id?: string;
 }
 
 export interface LeadStats {

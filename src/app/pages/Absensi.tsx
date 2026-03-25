@@ -1,12 +1,14 @@
 import {
     AlertCircle,
     CalendarDays,
+    Camera,
     CheckCircle2,
     Clock,
     Clock3,
     Eye,
     LogOut,
     Navigation,
+    Pencil,
     Plus,
     Search,
     Target,
@@ -14,24 +16,30 @@ import {
     UserCheck,
     X,
 } from 'lucide-react';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import Calendar from 'react-calendar';
 import { toast } from 'sonner';
 import {
     useAttendance,
     useAttendanceRecap,
+    useAttendanceSettings,
     useConfirmDialog,
     useLeaveRequests,
     useLocationAssignments,
     useMyAttendance,
     useWorkLocations,
 } from '../../hooks';
+import { API_BASE_URL } from '../../lib/config';
+import { compressImageToFile } from '../../lib/utils';
 import { userService } from '../../services';
-import type { Attendance, LeaveRequest, User, WorkLocation } from '../../types';
+import type { Attendance, LeaveRequest, User, UserLocationAssignment, WorkLocation } from '../../types';
 
 // Map imports
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'react-calendar/dist/Calendar.css';
 import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import '../../styles/react-calendar-absensi.css';
 
 // Fix for default marker icon in leaflet
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -87,8 +95,40 @@ function LocationMarker({
 
 function ChangeView({ center }: { center: [number, number] }) {
   const map = useMap();
-  map.setView(center);
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [map, center[0], center[1]]);
   return null;
+}
+
+function MapZoomControls() {
+  const map = useMap();
+  return (
+    <div className="absolute top-4 left-4 z-[1000] bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden">
+      <button
+        type="button"
+        onClick={() => map.zoomIn()}
+        className="w-9 h-9 text-lg font-bold text-gray-700 hover:bg-gray-50 border-b border-gray-100"
+        title="Zoom in"
+      >
+        +
+      </button>
+      <button
+        type="button"
+        onClick={() => map.zoomOut()}
+        className="w-9 h-9 text-lg font-bold text-gray-700 hover:bg-gray-50"
+        title="Zoom out"
+      >
+        −
+      </button>
+    </div>
+  );
+}
+
+interface OSMSearchResult {
+  display_name: string;
+  lat: string;
+  lon: string;
 }
 
 /* ── Status badge ───────────────────────────────────────────────── */
@@ -133,11 +173,24 @@ function fmtDate(dateStr?: string): string {
   });
 }
 
+function fmtTimeInput(val?: string): string {
+  if (!val) return '08:00';
+  return val.slice(0, 5);
+}
+
+function resolveAttendancePhotoUrl(photoPath?: string): string | null {
+  if (!photoPath) return null;
+  if (/^https?:\/\//i.test(photoPath)) return photoPath;
+
+  const origin = API_BASE_URL.replace(/\/api\/v\d+\/?$/i, '');
+  return `${origin}${photoPath.startsWith('/') ? '' : '/'}${photoPath}`;
+}
+
 /* ── Main Component ──────────────────────────────────────────────── */
 
 export function Absensi({ userRole, userName }: AbsensiProps) {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
-  const isSuperAdmin = userRole === 'Super Admin';
+  const isSuperAdmin = userRole === 'Super Admin' || userRole === 'Platform Owner';
   const [activeTab, setActiveTab] = useState<'realtime' | 'recap' | 'requests' | 'settings'>('realtime');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isLocationVerified, setIsLocationVerified] = useState(false);
@@ -145,13 +198,29 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [distanceM, setDistanceM] = useState<number | null>(null);
+  const [clockInPhoto, setClockInPhoto] = useState<File | null>(null);
+  const [clockOutPhoto, setClockOutPhoto] = useState<File | null>(null);
+  const [clockInPhotoPreview, setClockInPhotoPreview] = useState<string | null>(null);
+  const [clockOutPhotoPreview, setClockOutPhotoPreview] = useState<string | null>(null);
+  const [photoCompressing, setPhotoCompressing] = useState(false);
+  const [pendingAttendanceAction, setPendingAttendanceAction] = useState<'in' | 'out' | null>(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraTarget, setCameraTarget] = useState<'in' | 'out' | null>(null);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const hasAutoVerified = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [monitorPage, setMonitorPage] = useState(1);
+  const [monitorPerPage, setMonitorPerPage] = useState(10);
 
   // ── Hooks ────────────────────────────────────────────────────────
-  const { locations, create: createLocation, remove: removeLocation } = useWorkLocations();
+  const { locations, create: createLocation, update: updateLocation, remove: removeLocation } = useWorkLocations();
   const { assignments, create: createAssignment, remove: removeAssignment } = useLocationAssignments();
   const { attendances, clockIn, clockOut } = useAttendance();
+  const { settings, update: updateSettings } = useAttendanceSettings();
   const { myAttendances, refetch: refetchMyAttendances } = useMyAttendance();
   const {
     leaveRequests,
@@ -159,7 +228,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
     approve: approveLeave,
     reject: rejectLeave,
     remove: removeLeave,
-  } = useLeaveRequests();
+  } = useLeaveRequests(isSuperAdmin ? 'all' : 'my');
 
   // SA: load users list for assignment form
   const [usersList, setUsersList] = useState<User[]>([]);
@@ -205,6 +274,23 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
   const [showAddLocationModal, setShowAddLocationModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedAttendance, setSelectedAttendance] = useState<Attendance | null>(null);
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+
+  // ── Leave list controls (filter/search/pagination/calendar) ─────
+  const [leaveSearch, setLeaveSearch] = useState('');
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState<'all' | 'Cuti' | 'Izin' | 'Sakit'>('all');
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState<'all' | 'Menunggu' | 'Disetujui' | 'Ditolak'>('all');
+  const [leaveViewMode, setLeaveViewMode] = useState<'table' | 'calendar'>('table');
+  const [leavePage, setLeavePage] = useState(1);
+  const [leavePerPage, setLeavePerPage] = useState(10);
+  const [leaveSelectedDate, setLeaveSelectedDate] = useState<Date>(new Date());
+
+  // ── Attendance settings form (SA) ───────────────────────────────
+  const [timeSettingsForm, setTimeSettingsForm] = useState({
+    work_start_time: '08:00',
+    work_end_time: '17:00',
+    late_grace_minutes: 0,
+  });
 
   // ── Add location form state ──────────────────────────────────────
   const [newLocation, setNewLocation] = useState({
@@ -215,6 +301,10 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
     longitude: 106.8456,
   });
   const [pickedPosition, setPickedPosition] = useState<[number, number]>([-6.2088, 106.8456]);
+  const [locationSearchQuery, setLocationSearchQuery] = useState('');
+  const [locationSearchLoading, setLocationSearchLoading] = useState(false);
+  const [locationCurrentLoading, setLocationCurrentLoading] = useState(false);
+  const [locationSearchResults, setLocationSearchResults] = useState<OSMSearchResult[]>([]);
 
   useEffect(() => {
     setNewLocation((prev) => ({
@@ -230,11 +320,22 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
     start_date: '',
     end_date: '',
     reason: '',
+    user_id: '',
   });
 
   // ── Assignment form state ────────────────────────────────────────
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignForm, setAssignForm] = useState({ user_id: '', work_location_id: '' });
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!settings) return;
+    setTimeSettingsForm({
+      work_start_time: fmtTimeInput(settings.work_start_time),
+      work_end_time: fmtTimeInput(settings.work_end_time),
+      late_grace_minutes: Number(settings.late_grace_minutes || 0),
+    });
+  }, [settings]);
 
   /* ── Handlers ────────────────────────────────────────────────────── */
 
@@ -280,7 +381,144 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
 
   const handleVerifyLocation = () => triggerGps();
 
-  const handleClockIn = async () => {
+  const stopCameraStream = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
+  };
+
+  const closeCameraModal = () => {
+    stopCameraStream();
+    setShowCameraModal(false);
+    setCameraTarget(null);
+    setCameraError(null);
+    setPendingAttendanceAction(null);
+  };
+
+  const openCameraCapture = async (kind: 'in' | 'out') => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast.error('Browser tidak mendukung kamera');
+      return;
+    }
+
+    setCameraTarget(kind);
+    setCameraError(null);
+    setShowCameraModal(true);
+    setCameraStarting(true);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      if (cameraVideoRef.current) {
+        cameraVideoRef.current.srcObject = stream;
+        await cameraVideoRef.current.play();
+      }
+    } catch {
+      setCameraError('Tidak bisa membuka kamera. Pastikan izin kamera sudah diberikan.');
+      toast.error('Gagal membuka kamera');
+    } finally {
+      setCameraStarting(false);
+    }
+  };
+
+  const clearClockPhoto = (kind: 'in' | 'out') => {
+    if (kind === 'in') {
+      if (clockInPhotoPreview) URL.revokeObjectURL(clockInPhotoPreview);
+      setClockInPhoto(null);
+      setClockInPhotoPreview(null);
+      return;
+    }
+
+    if (clockOutPhotoPreview) URL.revokeObjectURL(clockOutPhotoPreview);
+    setClockOutPhoto(null);
+    setClockOutPhotoPreview(null);
+  };
+
+  const handleCaptureFromCamera = async () => {
+    if (!cameraTarget) {
+      toast.error('Target foto belum dipilih');
+      return;
+    }
+
+    const video = cameraVideoRef.current;
+    const canvas = cameraCanvasRef.current;
+    if (!video || !canvas || video.videoWidth === 0 || video.videoHeight === 0) {
+      toast.error('Kamera belum siap');
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      toast.error('Gagal memproses gambar kamera');
+      return;
+    }
+
+    try {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.9);
+      });
+
+      if (!blob) {
+        toast.error('Gagal mengambil foto dari kamera');
+        return;
+      }
+
+      setPhotoCompressing(true);
+      const rawFile = new File([blob], `attendance-${cameraTarget}-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      const compressed = await compressImageToFile(rawFile, 1200 * 1024);
+      const previewUrl = URL.createObjectURL(compressed);
+      const target = cameraTarget;
+      const shouldSubmit = pendingAttendanceAction === target;
+
+      if (target === 'in') {
+        if (clockInPhotoPreview) URL.revokeObjectURL(clockInPhotoPreview);
+        setClockInPhoto(compressed);
+        setClockInPhotoPreview(previewUrl);
+      } else {
+        if (clockOutPhotoPreview) URL.revokeObjectURL(clockOutPhotoPreview);
+        setClockOutPhoto(compressed);
+        setClockOutPhotoPreview(previewUrl);
+      }
+
+      closeCameraModal();
+
+      if (shouldSubmit) {
+        if (target === 'in') {
+          await submitClockIn(compressed);
+        } else {
+          await submitClockOut(compressed);
+        }
+      }
+    } catch {
+      toast.error('Gagal memproses foto. Coba lagi.');
+    } finally {
+      setPhotoCompressing(false);
+    }
+  };
+
+  useEffect(() => () => {
+    stopCameraStream();
+    if (clockInPhotoPreview) URL.revokeObjectURL(clockInPhotoPreview);
+    if (clockOutPhotoPreview) URL.revokeObjectURL(clockOutPhotoPreview);
+  }, [clockInPhotoPreview, clockOutPhotoPreview]);
+
+  const submitClockIn = async (photo?: File) => {
+    if (activeApprovedLeave) {
+      toast.info('Anda sedang dalam periode izin/cuti yang disetujui. Tidak perlu absen masuk.');
+      return;
+    }
     if (!userGpsPos) {
       toast.error('Verifikasi GPS terlebih dahulu');
       return;
@@ -289,36 +527,198 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
       toast.error('Anda berada di luar area absensi yang ditentukan');
       return;
     }
+    const photoFile = photo ?? clockInPhoto;
+    if (!photoFile) {
+      toast.error('Ambil foto absen masuk terlebih dahulu');
+      return;
+    }
     try {
-      await clockIn({ lat: userGpsPos[0], lng: userGpsPos[1] });
+      await clockIn({ lat: userGpsPos[0], lng: userGpsPos[1], photo: photoFile });
       await refetchMyAttendances();
+      clearClockPhoto('in');
     } catch {
       // hook already shows toast
     }
   };
 
-  const handleClockOut = async () => {
+  const submitClockOut = async (photo?: File) => {
+    if (activeApprovedLeave) {
+      toast.info('Anda sedang dalam periode izin/cuti yang disetujui. Tidak perlu absen pulang.');
+      return;
+    }
     if (!userGpsPos) {
       toast.error('Verifikasi GPS terlebih dahulu');
       return;
     }
+    const photoFile = photo ?? clockOutPhoto;
+    if (!photoFile) {
+      toast.error('Ambil foto absen pulang terlebih dahulu');
+      return;
+    }
     try {
-      await clockOut({ lat: userGpsPos[0], lng: userGpsPos[1] });
+      await clockOut({ lat: userGpsPos[0], lng: userGpsPos[1], photo: photoFile });
       await refetchMyAttendances();
+      clearClockPhoto('out');
     } catch {
       // hook already shows toast
     }
+  };
+
+  const handleClockIn = async () => {
+    if (!clockInPhoto) {
+      setPendingAttendanceAction('in');
+      await openCameraCapture('in');
+      return;
+    }
+
+    await submitClockIn();
+  };
+
+  const handleClockOut = async () => {
+    if (!clockOutPhoto) {
+      setPendingAttendanceAction('out');
+      await openCameraCapture('out');
+      return;
+    }
+
+    await submitClockOut();
+  };
+
+  const resetLocationForm = () => {
+    setNewLocation({ name: '', address: '', radius_m: 50, latitude: -6.2088, longitude: 106.8456 });
+    setPickedPosition([-6.2088, 106.8456]);
+    setLocationSearchQuery('');
+    setLocationSearchResults([]);
+    setEditingLocationId(null);
+  };
+
+  const openCreateLocationModal = () => {
+    resetLocationForm();
+    setShowAddLocationModal(true);
+  };
+
+  const handleStartEditLocation = (loc: WorkLocation) => {
+    setEditingLocationId(loc.id);
+    setNewLocation({
+      name: loc.name ?? '',
+      address: loc.address ?? '',
+      radius_m: Number(loc.radius_m ?? 50),
+      latitude: Number(loc.latitude ?? -6.2088),
+      longitude: Number(loc.longitude ?? 106.8456),
+    });
+    setPickedPosition([Number(loc.latitude ?? -6.2088), Number(loc.longitude ?? 106.8456)]);
+    setLocationSearchQuery('');
+    setLocationSearchResults([]);
+    setShowAddLocationModal(true);
   };
 
   const handleAddLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createLocation(newLocation);
+      if (editingLocationId) {
+        await updateLocation(editingLocationId, newLocation);
+      } else {
+        await createLocation(newLocation);
+      }
       setShowAddLocationModal(false);
-      setNewLocation({ name: '', address: '', radius_m: 50, latitude: -6.2088, longitude: 106.8456 });
-      setPickedPosition([-6.2088, 106.8456]);
+      resetLocationForm();
     } catch {
       /* hook shows toast */
+    }
+  };
+
+  const handleSearchLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = locationSearchQuery.trim();
+    if (!q) return;
+
+    try {
+      setLocationSearchLoading(true);
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=7&countrycodes=id&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (!res.ok) throw new Error('Gagal mencari lokasi');
+      const data = (await res.json()) as OSMSearchResult[];
+      setLocationSearchResults(Array.isArray(data) ? data : []);
+      if ((Array.isArray(data) ? data.length : 0) === 0) {
+        toast.info('Lokasi tidak ditemukan. Coba kata kunci lain.');
+      }
+    } catch {
+      toast.error('Gagal mencari lokasi. Coba beberapa saat lagi.');
+    } finally {
+      setLocationSearchLoading(false);
+    }
+  };
+
+  const handlePickSearchResult = (item: OSMSearchResult) => {
+    const lat = Number(item.lat);
+    const lng = Number(item.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    setPickedPosition([lat, lng]);
+    setNewLocation((prev) => ({
+      ...prev,
+      latitude: lat,
+      longitude: lng,
+      address: prev.address?.trim() ? prev.address : item.display_name,
+      name: prev.name?.trim() ? prev.name : item.display_name.split(',')[0] ?? prev.name,
+    }));
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      toast.error('Browser tidak mendukung GPS');
+      return;
+    }
+
+    setLocationCurrentLoading(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0,
+        });
+      });
+
+      const lat = Number(position.coords.latitude);
+      const lng = Number(position.coords.longitude);
+      setPickedPosition([lat, lng]);
+
+      setNewLocation((prev) => ({
+        ...prev,
+        latitude: lat,
+        longitude: lng,
+      }));
+
+      // Coba isi alamat otomatis (best-effort)
+      try {
+        const reverseUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+        const res = await fetch(reverseUrl, { headers: { Accept: 'application/json' } });
+        if (res.ok) {
+          const data = (await res.json()) as { display_name?: string };
+          const displayName = data.display_name ?? '';
+          if (displayName) {
+            setNewLocation((prev) => ({
+              ...prev,
+              address: prev.address.trim() ? prev.address : displayName,
+              name: prev.name.trim() ? prev.name : (displayName.split(',')[0] || prev.name),
+            }));
+          }
+        }
+      } catch {
+        // no-op, koordinat sudah terisi
+      }
+
+      toast.success('Lokasi saat ini berhasil digunakan');
+    } catch {
+      toast.error('Gagal mengambil lokasi saat ini. Pastikan izin lokasi aktif.');
+    } finally {
+      setLocationCurrentLoading(false);
     }
   };
 
@@ -334,7 +734,17 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
       await createAssignment(assignForm.user_id, assignForm.work_location_id);
       setShowAssignModal(false);
       setAssignForm({ user_id: '', work_location_id: '' });
+      setEditingAssignmentId(null);
     } catch { /* hook shows toast */ }
+  };
+
+  const handleStartEditAssignment = (assignment: UserLocationAssignment) => {
+    setEditingAssignmentId(assignment.id);
+    setAssignForm({
+      user_id: assignment.user_id,
+      work_location_id: assignment.work_location_id,
+    });
+    setShowAssignModal(true);
   };
 
   const handleDeleteAssignment = async (id: string, name: string) => {
@@ -345,15 +755,22 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
 
   const handleApplyLeave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isSuperAdmin && !leaveForm.user_id) {
+      toast.error('Pilih karyawan terlebih dahulu.');
+      return;
+    }
+
     try {
       await createLeave({
         type: leaveForm.type,
         start_date: leaveForm.start_date,
         end_date: leaveForm.end_date || leaveForm.start_date,
         reason: leaveForm.reason || undefined,
+        user_id: isSuperAdmin ? leaveForm.user_id : undefined,
       });
       setShowLeaveModal(false);
-      setLeaveForm({ type: 'Cuti', start_date: '', end_date: '', reason: '' });
+      setLeaveForm({ type: 'Cuti', start_date: '', end_date: '', reason: '', user_id: '' });
     } catch {
       /* hook shows toast */
     }
@@ -370,6 +787,19 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
   const handleDeleteLeave = async (req: LeaveRequest) => {
     if (await showConfirm({ title: 'Hapus Pengajuan', description: `Hapus pengajuan izin dari ${req.user?.name ?? 'karyawan'}?` })) {
       try { await removeLeave(req.id); } catch { /* hook shows toast */ }
+    }
+  };
+
+  const handleSaveAttendanceSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateSettings({
+        work_start_time: `${timeSettingsForm.work_start_time}:00`,
+        work_end_time: `${timeSettingsForm.work_end_time}:00`,
+        late_grace_minutes: Number(timeSettingsForm.late_grace_minutes || 0),
+      });
+    } catch {
+      // hook already shows toast
     }
   };
 
@@ -396,6 +826,67 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
       a.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.location?.name?.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  const monitorTotalPages = Math.max(1, Math.ceil(filteredAttendances.length / monitorPerPage));
+  const monitorCurrentPage = Math.min(monitorPage, monitorTotalPages);
+  const monitorPagedAttendances = filteredAttendances.slice(
+    (monitorCurrentPage - 1) * monitorPerPage,
+    monitorCurrentPage * monitorPerPage,
+  );
+
+  const filteredLeaveRequests = leaveRequests.filter((req) => {
+    if (leaveTypeFilter !== 'all' && req.type !== leaveTypeFilter) return false;
+    if (leaveStatusFilter !== 'all' && req.status !== leaveStatusFilter) return false;
+
+    if (leaveSearch) {
+      const q = leaveSearch.toLowerCase();
+      const name = req.user?.name?.toLowerCase() ?? '';
+      const reason = req.reason?.toLowerCase() ?? '';
+      const type = req.type.toLowerCase();
+      if (!name.includes(q) && !reason.includes(q) && !type.includes(q)) return false;
+    }
+
+    return true;
+  });
+
+  const leaveTotalPages = Math.max(1, Math.ceil(filteredLeaveRequests.length / leavePerPage));
+  const leaveCurrentPage = Math.min(leavePage, leaveTotalPages);
+  const leavePagedRequests = filteredLeaveRequests.slice(
+    (leaveCurrentPage - 1) * leavePerPage,
+    leaveCurrentPage * leavePerPage,
+  );
+
+  const leaveRequestsOnSelectedDate = filteredLeaveRequests.filter((req) => {
+    const d = new Date(leaveSelectedDate);
+    const start = new Date(req.start_date);
+    const end = new Date(req.end_date || req.start_date);
+    return d >= start && d <= end;
+  });
+
+  useEffect(() => {
+    setLeavePage(1);
+  }, [leaveSearch, leaveStatusFilter, leaveTypeFilter, leavePerPage]);
+
+  useEffect(() => {
+    setMonitorPage(1);
+  }, [searchQuery, monitorPerPage]);
+
+  const getLeaveCountByDate = (date: Date) => filteredLeaveRequests.filter((req) => {
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const start = new Date(req.start_date);
+    const end = new Date(req.end_date || req.start_date);
+    const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    return day >= startOnly && day <= endOnly;
+  }).length;
+
+  const activeApprovedLeave = leaveRequests.find((req) => {
+    if (req.status !== 'Disetujui') return false;
+    const today = new Date(todayStr);
+    const start = new Date(req.start_date);
+    const end = new Date(req.end_date || req.start_date);
+    return today >= start && today <= end;
+  });
 
   /* ================================================================
    *  NON-SUPER-ADMIN VIEW (Employee self-service)
@@ -428,6 +919,19 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
           {/* Clock-in card */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm flex flex-col items-center text-center space-y-6">
+              {activeApprovedLeave && (
+                <div className="w-full p-4 rounded-2xl border border-blue-100 bg-blue-50 text-left">
+                  <p className="text-[10px] font-bold text-blue-600 uppercase">Izin/Cuti Aktif</p>
+                  <p className="text-sm font-bold text-blue-900">{activeApprovedLeave.type} Disetujui</p>
+                  <p className="text-xs text-blue-700">
+                    Periode {fmtDate(activeApprovedLeave.start_date)}
+                    {activeApprovedLeave.end_date !== activeApprovedLeave.start_date
+                      ? ` – ${fmtDate(activeApprovedLeave.end_date)}`
+                      : ''}
+                  </p>
+                </div>
+              )}
+
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center text-primary relative">
                 <Clock size={48} />
                 <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md">
@@ -452,23 +956,53 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   Absensi Selesai Hari Ini
                 </div>
               ) : !isClockedIn ? (
-                <button
-                  onClick={handleClockIn}
-                  disabled={gpsLoading || !userGpsPos || !isLocationVerified}
-                  className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                >
-                  <CheckCircle2 size={24} className="group-hover:scale-110 transition-transform" />
-                  Absen Masuk Sekarang
-                </button>
+                <div className="w-full space-y-3">
+                  <label className="block text-left text-xs font-bold text-gray-600 uppercase tracking-wide">Foto Absen Masuk</label>
+                  {clockInPhotoPreview && (
+                    <div className="relative rounded-2xl overflow-hidden border border-gray-200">
+                      <img src={clockInPhotoPreview} alt="Preview foto absen masuk" className="w-full h-36 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => clearClockPhoto('in')}
+                        className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full hover:bg-black/70"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleClockIn}
+                    disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos || !isLocationVerified}
+                    className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                  >
+                    {photoCompressing ? <Camera size={22} className="animate-pulse" /> : <CheckCircle2 size={24} className="group-hover:scale-110 transition-transform" />}
+                    {photoCompressing ? 'Memproses Foto...' : 'Absen Masuk'}
+                  </button>
+                </div>
               ) : (
-                <button
-                  onClick={handleClockOut}
-                  disabled={gpsLoading || !userGpsPos}
-                  className="w-full py-4 border-2 border-primary text-primary rounded-2xl font-bold text-lg hover:bg-primary/5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <LogOut size={24} />
-                  Absen Pulang
-                </button>
+                <div className="w-full space-y-3">
+                  <label className="block text-left text-xs font-bold text-gray-600 uppercase tracking-wide">Foto Absen Pulang</label>
+                  {clockOutPhotoPreview && (
+                    <div className="relative rounded-2xl overflow-hidden border border-gray-200">
+                      <img src={clockOutPhotoPreview} alt="Preview foto absen pulang" className="w-full h-36 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => clearClockPhoto('out')}
+                        className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full hover:bg-black/70"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleClockOut}
+                    disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos}
+                    className="w-full py-4 border-2 border-primary text-primary rounded-2xl font-bold text-lg hover:bg-primary/5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {photoCompressing ? <Camera size={22} className="animate-pulse" /> : <LogOut size={24} />}
+                    {photoCompressing ? 'Memproses Foto...' : 'Absen Pulang'}
+                  </button>
+                </div>
               )}
 
               {/* GPS Status Panel */}
@@ -581,6 +1115,290 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
             </div>
           </div>
         </div>
+
+        {/* Pengajuan izin untuk semua role non-super-admin */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-bold text-gray-800">Pengajuan Izin & Cuti Saya</h3>
+            <button
+              onClick={() => setShowLeaveModal(true)}
+              className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold flex items-center gap-2"
+            >
+              <Plus size={16} /> Ajukan Izin
+            </button>
+          </div>
+
+          <div className="p-4 border-b border-gray-100 bg-gray-50/40 grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-4 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input
+                type="text"
+                value={leaveSearch}
+                onChange={(e) => setLeaveSearch(e.target.value)}
+                placeholder="Cari jenis/alasan..."
+                className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <select
+              value={leaveTypeFilter}
+              onChange={(e) => setLeaveTypeFilter(e.target.value as 'all' | 'Cuti' | 'Izin' | 'Sakit')}
+              className="lg:col-span-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+            >
+              <option value="all">Semua Jenis</option>
+              <option value="Cuti">Cuti</option>
+              <option value="Izin">Izin</option>
+              <option value="Sakit">Sakit</option>
+            </select>
+            <select
+              value={leaveStatusFilter}
+              onChange={(e) => setLeaveStatusFilter(e.target.value as 'all' | 'Menunggu' | 'Disetujui' | 'Ditolak')}
+              className="lg:col-span-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+            >
+              <option value="all">Semua Status</option>
+              <option value="Menunggu">Menunggu</option>
+              <option value="Disetujui">Disetujui</option>
+              <option value="Ditolak">Ditolak</option>
+            </select>
+            <select
+              value={leavePerPage}
+              onChange={(e) => setLeavePerPage(Number(e.target.value))}
+              className="lg:col-span-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+            >
+              <option value={5}>5 / halaman</option>
+              <option value={10}>10 / halaman</option>
+              <option value={20}>20 / halaman</option>
+            </select>
+            <div className="lg:col-span-2 flex rounded-lg border border-gray-200 overflow-hidden bg-white">
+              <button
+                onClick={() => setLeaveViewMode('table')}
+                className={`flex-1 px-3 py-2 text-xs font-bold ${leaveViewMode === 'table' ? 'bg-primary text-white' : 'text-gray-600'}`}
+              >
+                Tabel
+              </button>
+              <button
+                onClick={() => setLeaveViewMode('calendar')}
+                className={`flex-1 px-3 py-2 text-xs font-bold ${leaveViewMode === 'calendar' ? 'bg-primary text-white' : 'text-gray-600'}`}
+              >
+                Kalender
+              </button>
+            </div>
+          </div>
+
+          {leaveViewMode === 'table' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase">
+                  <th className="px-6 py-4">Jenis</th>
+                  <th className="px-6 py-4">Tanggal</th>
+                  <th className="px-6 py-4">Alasan</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {leavePagedRequests.map((req) => (
+                  <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium">{req.type}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {fmtDate(req.start_date)}
+                      {req.end_date !== req.start_date && ` – ${fmtDate(req.end_date)}`}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 max-w-[280px] truncate">{req.reason ?? '-'}</td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={req.status} />
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {req.status === 'Menunggu' ? (
+                        <button
+                          onClick={() => handleDeleteLeave(req)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100"
+                        >
+                          <Trash2 size={12} /> Batal
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+
+                {leavePagedRequests.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400">Belum ada pengajuan izin.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between text-sm">
+              <p className="text-gray-500">Total {filteredLeaveRequests.length} data</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setLeavePage((p) => Math.max(1, p - 1))}
+                  disabled={leaveCurrentPage <= 1}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50"
+                >
+                  Sebelumnya
+                </button>
+                <span className="text-gray-600">{leaveCurrentPage} / {leaveTotalPages}</span>
+                <button
+                  onClick={() => setLeavePage((p) => Math.min(leaveTotalPages, p + 1))}
+                  disabled={leaveCurrentPage >= leaveTotalPages}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50"
+                >
+                  Berikutnya
+                </button>
+              </div>
+            </div>
+          </div>
+          ) : (
+            <div className="p-4 grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <div className="xl:col-span-2 rounded-2xl border border-gray-200 p-4 bg-white rc-absensi-wrapper">
+                <Calendar
+                  locale="id-ID"
+                  value={leaveSelectedDate}
+                  onClickDay={(value) => setLeaveSelectedDate(value)}
+                  tileClassName={({ date }) => {
+                    const count = getLeaveCountByDate(date);
+                    return count > 0 ? 'rc-has-leave' : undefined;
+                  }}
+                  tileContent={({ date, view }) => {
+                    if (view !== 'month') return null;
+                    const count = getLeaveCountByDate(date);
+                    if (count <= 0) return null;
+                    return <span className="rc-leave-badge">{count}</span>;
+                  }}
+                />
+              </div>
+              <div className="rounded-2xl border border-gray-200 p-4">
+                <h4 className="font-bold text-gray-800 mb-3">
+                  Pengajuan pada {leaveSelectedDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </h4>
+                <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                  {leaveRequestsOnSelectedDate.length === 0 && (
+                    <p className="text-sm text-gray-400">Tidak ada pengajuan pada tanggal ini.</p>
+                  )}
+                  {leaveRequestsOnSelectedDate.map((req) => (
+                    <div key={req.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+                      <p className="text-sm font-bold">{req.type} · <span className="font-medium">{req.user?.name ?? userName}</span></p>
+                      <p className="text-xs text-gray-500">{fmtDate(req.start_date)}{req.end_date !== req.start_date ? ` – ${fmtDate(req.end_date)}` : ''}</p>
+                      <div className="mt-1"><StatusBadge status={req.status} /></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Modal: Pengajuan Izin (non-super-admin) */}
+        {showLeaveModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold">Form Pengajuan Izin</h3>
+                <button onClick={() => setShowLeaveModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleApplyLeave} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold text-gray-700">Jenis Izin</label>
+                  <select
+                    className="w-full px-4 py-2 bg-gray-50 border rounded-xl"
+                    value={leaveForm.type}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value as 'Cuti' | 'Izin' | 'Sakit' })}
+                  >
+                    <option value="Cuti">Cuti</option>
+                    <option value="Izin">Izin</option>
+                    <option value="Sakit">Sakit</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-700">Tanggal Mulai</label>
+                    <input
+                      type="date"
+                      required
+                      className="w-full px-4 py-2 bg-gray-50 border rounded-xl"
+                      value={leaveForm.start_date}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-700">Tanggal Selesai</label>
+                    <input
+                      type="date"
+                      className="w-full px-4 py-2 bg-gray-50 border rounded-xl"
+                      value={leaveForm.end_date}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold text-gray-700">Alasan</label>
+                  <textarea
+                    className="w-full px-4 py-2 bg-gray-50 border rounded-xl h-20"
+                    placeholder="Tuliskan alasan izin..."
+                    value={leaveForm.reason}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                  />
+                </div>
+                <button type="submit" className="w-full py-3 bg-primary text-white rounded-xl font-bold">
+                  Kirim Pengajuan
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showCameraModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold">Ambil Foto {cameraTarget === 'in' ? 'Absen Masuk' : 'Absen Pulang'}</h3>
+                <button onClick={closeCameraModal} className="p-2 hover:bg-gray-100 rounded-full">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="rounded-2xl overflow-hidden border border-gray-200 bg-black relative">
+                <video ref={cameraVideoRef} autoPlay playsInline muted className="w-full h-72 object-cover" />
+                {cameraStarting && (
+                  <div className="absolute inset-0 flex items-center justify-center text-white text-sm font-bold bg-black/50">
+                    Membuka kamera...
+                  </div>
+                )}
+              </div>
+
+              {cameraError && (
+                <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium">
+                  {cameraError}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={closeCameraModal}
+                  className="flex-1 py-3 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCaptureFromCamera}
+                  disabled={cameraStarting || !!cameraError || photoCompressing}
+                  className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {photoCompressing ? 'Memproses...' : 'Ambil Foto'}
+                </button>
+              </div>
+              <canvas ref={cameraCanvasRef} className="hidden" />
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -652,8 +1470,26 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                     {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
+                {settings && (
+                  <div className="hidden md:block bg-white px-3 py-2 rounded-lg border border-gray-200 text-xs">
+                    <p className="text-gray-500">Jam kerja</p>
+                    <p className="font-bold text-gray-700">
+                      {fmtTimeInput(settings.work_start_time)} - {fmtTimeInput(settings.work_end_time)}
+                      <span className="font-normal text-gray-500"> (toleransi {settings.late_grace_minutes} menit)</span>
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2">
+                <select
+                  value={monitorPerPage}
+                  onChange={(e) => setMonitorPerPage(Number(e.target.value))}
+                  className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value={10}>10 / halaman</option>
+                  <option value={20}>20 / halaman</option>
+                  <option value={50}>50 / halaman</option>
+                </select>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <input
@@ -679,7 +1515,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredAttendances.map((att) => (
+                  {monitorPagedAttendances.map((att) => (
                     <tr key={att.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <p className="font-bold text-sm">{att.user?.name ?? '-'}</p>
@@ -701,13 +1537,34 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                       </td>
                     </tr>
                   ))}
-                  {filteredAttendances.length === 0 && (
+                  {monitorPagedAttendances.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center text-gray-400">Belum ada data absensi.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
+
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between text-sm">
+                <p className="text-gray-500">Total {filteredAttendances.length} data</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMonitorPage((p) => Math.max(1, p - 1))}
+                    disabled={monitorCurrentPage <= 1}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50"
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="text-gray-600">{monitorCurrentPage} / {monitorTotalPages}</span>
+                  <button
+                    onClick={() => setMonitorPage((p) => Math.min(monitorTotalPages, p + 1))}
+                    disabled={monitorCurrentPage >= monitorTotalPages}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -742,6 +1599,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                     <th className="px-6 py-4">Nama Karyawan</th>
                     <th className="px-6 py-4 text-center text-green-600">Hadir</th>
                     <th className="px-6 py-4 text-center text-orange-600">Terlambat</th>
+                    <th className="px-6 py-4 text-center text-indigo-600">Cuti</th>
                     <th className="px-6 py-4 text-center text-blue-600">Izin/Sakit</th>
                     <th className="px-6 py-4 text-center text-red-600">Alpha</th>
                     <th className="px-6 py-4 text-right">Skor</th>
@@ -753,6 +1611,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                       <td className="px-6 py-4 font-bold text-sm">{item.name}</td>
                       <td className="px-6 py-4 text-center text-sm">{item.present}</td>
                       <td className="px-6 py-4 text-center text-sm">{item.late}</td>
+                      <td className="px-6 py-4 text-center text-sm">{item.cuti}</td>
                       <td className="px-6 py-4 text-center text-sm">{item.permit}</td>
                       <td className="px-6 py-4 text-center text-sm">{item.alpha}</td>
                       <td className="px-6 py-4 text-right font-bold text-sm text-primary">{item.score}%</td>
@@ -760,7 +1619,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   ))}
                   {!recapLoading && recapData.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-gray-400">Belum ada data absensi untuk periode ini.</td>
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-400">Belum ada data absensi untuk periode ini.</td>
                     </tr>
                   )}
                 </tbody>
@@ -778,9 +1637,67 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 onClick={() => setShowLeaveModal(true)}
                 className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold flex items-center gap-2"
               >
-                <Plus size={16} /> Ajukan Izin
+                <Plus size={16} /> {isSuperAdmin ? 'Tambah Izin Karyawan' : 'Ajukan Izin'}
               </button>
             </div>
+
+            <div className="p-4 border-b border-gray-100 bg-gray-50/40 grid grid-cols-1 lg:grid-cols-12 gap-3">
+              <div className="lg:col-span-4 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  value={leaveSearch}
+                  onChange={(e) => setLeaveSearch(e.target.value)}
+                  placeholder="Cari nama/alasan..."
+                  className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+              <select
+                value={leaveTypeFilter}
+                onChange={(e) => setLeaveTypeFilter(e.target.value as 'all' | 'Cuti' | 'Izin' | 'Sakit')}
+                className="lg:col-span-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="all">Semua Jenis</option>
+                <option value="Cuti">Cuti</option>
+                <option value="Izin">Izin</option>
+                <option value="Sakit">Sakit</option>
+              </select>
+              <select
+                value={leaveStatusFilter}
+                onChange={(e) => setLeaveStatusFilter(e.target.value as 'all' | 'Menunggu' | 'Disetujui' | 'Ditolak')}
+                className="lg:col-span-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="all">Semua Status</option>
+                <option value="Menunggu">Menunggu</option>
+                <option value="Disetujui">Disetujui</option>
+                <option value="Ditolak">Ditolak</option>
+              </select>
+              <select
+                value={leavePerPage}
+                onChange={(e) => setLeavePerPage(Number(e.target.value))}
+                className="lg:col-span-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+              >
+                <option value={5}>5 / halaman</option>
+                <option value={10}>10 / halaman</option>
+                <option value={20}>20 / halaman</option>
+              </select>
+              <div className="lg:col-span-2 flex rounded-lg border border-gray-200 overflow-hidden bg-white">
+                <button
+                  onClick={() => setLeaveViewMode('table')}
+                  className={`flex-1 px-3 py-2 text-xs font-bold ${leaveViewMode === 'table' ? 'bg-primary text-white' : 'text-gray-600'}`}
+                >
+                  Tabel
+                </button>
+                <button
+                  onClick={() => setLeaveViewMode('calendar')}
+                  className={`flex-1 px-3 py-2 text-xs font-bold ${leaveViewMode === 'calendar' ? 'bg-primary text-white' : 'text-gray-600'}`}
+                >
+                  Kalender
+                </button>
+              </div>
+            </div>
+
+            {leaveViewMode === 'table' ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
@@ -794,7 +1711,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {leaveRequests.map((req) => (
+                  {leavePagedRequests.map((req) => (
                     <tr key={req.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 font-bold text-sm">{req.user?.name ?? '-'}</td>
                       <td className="px-6 py-4 text-sm">{req.type}</td>
@@ -834,27 +1751,131 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                       </td>
                     </tr>
                   ))}
-                  {leaveRequests.length === 0 && (
+                  {leavePagedRequests.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center text-gray-400">Belum ada pengajuan izin.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
+
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between text-sm">
+                <p className="text-gray-500">Total {filteredLeaveRequests.length} data</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setLeavePage((p) => Math.max(1, p - 1))}
+                    disabled={leaveCurrentPage <= 1}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50"
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="text-gray-600">{leaveCurrentPage} / {leaveTotalPages}</span>
+                  <button
+                    onClick={() => setLeavePage((p) => Math.min(leaveTotalPages, p + 1))}
+                    disabled={leaveCurrentPage >= leaveTotalPages}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
             </div>
+            ) : (
+              <div className="p-4 grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="xl:col-span-2 rounded-2xl border border-gray-200 p-4 bg-white rc-absensi-wrapper">
+                  <Calendar
+                    locale="id-ID"
+                    value={leaveSelectedDate}
+                    onClickDay={(value) => setLeaveSelectedDate(value)}
+                    tileClassName={({ date }) => {
+                      const count = getLeaveCountByDate(date);
+                      return count > 0 ? 'rc-has-leave' : undefined;
+                    }}
+                    tileContent={({ date, view }) => {
+                      if (view !== 'month') return null;
+                      const count = getLeaveCountByDate(date);
+                      if (count <= 0) return null;
+                      return <span className="rc-leave-badge">{count}</span>;
+                    }}
+                  />
+                </div>
+                <div className="rounded-2xl border border-gray-200 p-4">
+                  <h4 className="font-bold text-gray-800 mb-3">
+                    Siapa yang cuti/izin pada {leaveSelectedDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </h4>
+                  <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                    {leaveRequestsOnSelectedDate.length === 0 && (
+                      <p className="text-sm text-gray-400">Tidak ada pengajuan pada tanggal ini.</p>
+                    )}
+                    {leaveRequestsOnSelectedDate.map((req) => (
+                      <div key={req.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+                        <p className="text-sm font-bold">{req.user?.name ?? '-'} · {req.type}</p>
+                        <p className="text-xs text-gray-500">{fmtDate(req.start_date)}{req.end_date !== req.start_date ? ` – ${fmtDate(req.end_date)}` : ''}</p>
+                        <div className="mt-1"><StatusBadge status={req.status} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* ─── Tab: Pengaturan Lokasi ──────────────────────────── */}
         {activeTab === 'settings' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 p-6 space-y-8">
+            <form onSubmit={handleSaveAttendanceSettings} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Pengaturan Jam Kerja</h3>
+                <p className="text-sm text-gray-500">Jam masuk/pulang dan toleransi keterlambatan tidak lagi hardcoded.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-600 uppercase">Jam Masuk</label>
+                  <input
+                    type="time"
+                    value={timeSettingsForm.work_start_time}
+                    onChange={(e) => setTimeSettingsForm((p) => ({ ...p, work_start_time: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-600 uppercase">Jam Pulang</label>
+                  <input
+                    type="time"
+                    value={timeSettingsForm.work_end_time}
+                    onChange={(e) => setTimeSettingsForm((p) => ({ ...p, work_end_time: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-600 uppercase">Toleransi Telat (menit)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={180}
+                    value={timeSettingsForm.late_grace_minutes}
+                    onChange={(e) => setTimeSettingsForm((p) => ({ ...p, late_grace_minutes: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button type="submit" className="w-full px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold">
+                    Simpan Jam Kerja
+                  </button>
+                </div>
+              </div>
+            </form>
+
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
               {/* Location list */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-gray-800 text-lg">Daftar Titik Lokasi Absen</h3>
                   <button
-                    onClick={() => setShowAddLocationModal(true)}
+                    onClick={openCreateLocationModal}
                     className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-md shadow-primary/20"
                   >
                     <Plus size={16} /> Tambah Lokasi
@@ -881,6 +1902,13 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
+                            onClick={() => handleStartEditLocation(loc)}
+                            className="p-2 hover:bg-white rounded-lg text-gray-400 hover:text-primary transition-colors"
+                            title="Edit Lokasi"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
                             onClick={() => handleDeleteLocation(loc)}
                             className="p-2 hover:bg-white rounded-lg text-gray-400 hover:text-red-500 transition-colors"
                           >
@@ -899,7 +1927,11 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-gray-800 text-lg">Penempatan Lokasi Per Karyawan</h3>
                   <button
-                    onClick={() => setShowAssignModal(true)}
+                    onClick={() => {
+                      setEditingAssignmentId(null);
+                      setAssignForm({ user_id: '', work_location_id: '' });
+                      setShowAssignModal(true);
+                    }}
                     className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-md shadow-primary/20"
                   >
                     <Plus size={16} /> Assign Karyawan
@@ -920,12 +1952,21 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                           <td className="px-6 py-4 font-bold">{a.user?.name ?? '-'}</td>
                           <td className="px-6 py-4 text-gray-600">{a.location?.name ?? '-'}</td>
                           <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => handleDeleteAssignment(a.id, a.user?.name ?? '-')}
-                              className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => handleStartEditAssignment(a)}
+                                className="p-1.5 hover:bg-blue-50 text-gray-400 hover:text-primary rounded-lg transition-colors"
+                                title="Edit Penempatan"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAssignment(a.id, a.user?.name ?? '-')}
+                                className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -948,12 +1989,32 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold">Form Pengajuan Izin</h3>
+              <h3 className="text-xl font-bold">{isSuperAdmin ? 'Form Izin/Cuti Karyawan' : 'Form Pengajuan Izin'}</h3>
               <button onClick={() => setShowLeaveModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
                 <X size={20} />
               </button>
             </div>
             <form onSubmit={handleApplyLeave} className="space-y-4">
+              {isSuperAdmin && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold text-gray-700">Karyawan</label>
+                  <select
+                    required
+                    className="w-full px-4 py-2 bg-gray-50 border rounded-xl"
+                    value={leaveForm.user_id}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, user_id: e.target.value })}
+                  >
+                    <option value="">-- Pilih Karyawan --</option>
+                    {usersList.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-green-700 bg-green-50 border border-green-100 rounded-lg px-2 py-1.5">
+                    Saat disimpan oleh Super Admin, pengajuan langsung berstatus Disetujui.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <label className="text-sm font-bold text-gray-700">Jenis Izin</label>
                 <select
@@ -997,7 +2058,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 />
               </div>
               <button type="submit" className="w-full py-3 bg-primary text-white rounded-xl font-bold">
-                Kirim Pengajuan
+                {isSuperAdmin ? 'Simpan & Setujui' : 'Kirim Pengajuan'}
               </button>
             </form>
           </div>
@@ -1007,15 +2068,54 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
       {/* ── Modal: Tambah Lokasi ───────────────────────────────── */}
       {showAddLocationModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden">
+          <div className="bg-white rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-2">
               {/* Map Side */}
-              <div className="h-[300px] md:h-full min-h-[400px] relative z-0">
-                <div className="absolute top-4 left-4 z-[1000] bg-white p-2 rounded-lg shadow-md border border-gray-100 max-w-[200px]">
-                  <p className="text-[10px] font-bold text-primary uppercase">Petunjuk</p>
-                  <p className="text-[11px] text-gray-600">Klik pada peta untuk menentukan titik koordinat (Pin).</p>
+              <div className="h-[380px] md:h-full min-h-[560px] relative z-0">
+                <div className="absolute top-4 right-4 z-[1000] bg-white p-3 rounded-lg shadow-md border border-gray-100 w-[340px] space-y-2">
+                  <form onSubmit={handleSearchLocation} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={locationSearchQuery}
+                      onChange={(e) => setLocationSearchQuery(e.target.value)}
+                      placeholder="Cari kota/jalan/lokasi..."
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={locationSearchLoading}
+                      className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-bold disabled:opacity-50"
+                    >
+                      {locationSearchLoading ? '...' : 'Cari'}
+                    </button>
+                  </form>
+
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocation}
+                    disabled={locationCurrentLoading}
+                    className="w-full px-3 py-2 border border-primary/30 text-primary bg-primary/5 rounded-lg text-sm font-bold disabled:opacity-50"
+                  >
+                    {locationCurrentLoading ? 'Mengambil lokasi saat ini...' : 'Gunakan Lokasi Saat Ini'}
+                  </button>
+
+                  {locationSearchResults.length > 0 && (
+                    <div className="max-h-56 overflow-y-auto border border-gray-100 rounded-lg">
+                      {locationSearchResults.map((item) => (
+                        <button
+                          type="button"
+                          key={`${item.lat}-${item.lon}`}
+                          onClick={() => handlePickSearchResult(item)}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b last:border-b-0 border-gray-100"
+                        >
+                          {item.display_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <MapContainer center={pickedPosition} zoom={13} style={{ height: '100%', width: '100%' }}>
+                <MapContainer center={pickedPosition} zoom={13} zoomControl={false} style={{ height: '100%', width: '100%' }}>
+                  <MapZoomControls />
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   <LocationMarker position={pickedPosition} setPosition={setPickedPosition} />
                   <ChangeView center={pickedPosition} />
@@ -1025,8 +2125,14 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
               {/* Form Side */}
               <div className="p-8 space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold text-gray-900">Konfigurasi Lokasi</h3>
-                  <button onClick={() => setShowAddLocationModal(false)} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-colors">
+                  <h3 className="text-xl font-bold text-gray-900">{editingLocationId ? 'Edit Lokasi' : 'Konfigurasi Lokasi'}</h3>
+                  <button
+                    onClick={() => {
+                      setShowAddLocationModal(false);
+                      resetLocationForm();
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"
+                  >
                     <X size={24} />
                   </button>
                 </div>
@@ -1085,11 +2191,18 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   </div>
 
                   <div className="pt-4 flex gap-3">
-                    <button type="button" onClick={() => setShowAddLocationModal(false)} className="flex-1 py-3 border-2 border-gray-100 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddLocationModal(false);
+                        resetLocationForm();
+                      }}
+                      className="flex-1 py-3 border-2 border-gray-100 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors"
+                    >
                       Batal
                     </button>
                     <button type="submit" className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all">
-                      Simpan Lokasi
+                      {editingLocationId ? 'Update Lokasi' : 'Simpan Lokasi'}
                     </button>
                   </div>
                 </form>
@@ -1136,6 +2249,53 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   <p className="font-bold">{selectedAttendance.location?.name ?? '-'}</p>
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-xs text-gray-500 mb-2">FOTO CHECK-IN</p>
+                  {resolveAttendancePhotoUrl(selectedAttendance.clock_in_photo) ? (
+                    <a
+                      href={resolveAttendancePhotoUrl(selectedAttendance.clock_in_photo) as string}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={resolveAttendancePhotoUrl(selectedAttendance.clock_in_photo) as string}
+                        alt="Foto check-in"
+                        className="w-full h-36 object-cover rounded-lg border border-gray-200"
+                      />
+                    </a>
+                  ) : (
+                    <div className="w-full h-36 rounded-lg border border-dashed border-gray-300 bg-white text-gray-400 text-xs flex items-center justify-center">
+                      Tidak ada foto check-in
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-xs text-gray-500 mb-2">FOTO CHECK-OUT</p>
+                  {resolveAttendancePhotoUrl(selectedAttendance.clock_out_photo) ? (
+                    <a
+                      href={resolveAttendancePhotoUrl(selectedAttendance.clock_out_photo) as string}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={resolveAttendancePhotoUrl(selectedAttendance.clock_out_photo) as string}
+                        alt="Foto check-out"
+                        className="w-full h-36 object-cover rounded-lg border border-gray-200"
+                      />
+                    </a>
+                  ) : (
+                    <div className="w-full h-36 rounded-lg border border-dashed border-gray-300 bg-white text-gray-400 text-xs flex items-center justify-center">
+                      Tidak ada foto check-out
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {selectedAttendance.notes && (
                 <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100">
                   <p className="text-xs text-gray-500">CATATAN</p>
@@ -1155,8 +2315,15 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold">Assign Karyawan ke Lokasi</h3>
-              <button onClick={() => setShowAssignModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
+              <h3 className="text-xl font-bold">{editingAssignmentId ? 'Edit Penempatan Lokasi' : 'Assign Karyawan ke Lokasi'}</h3>
+              <button
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setEditingAssignmentId(null);
+                  setAssignForm({ user_id: '', work_location_id: '' });
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
                 <X size={20} />
               </button>
             </div>
@@ -1193,7 +2360,11 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowAssignModal(false)}
+                  onClick={() => {
+                    setShowAssignModal(false);
+                    setEditingAssignmentId(null);
+                    setAssignForm({ user_id: '', work_location_id: '' });
+                  }}
                   className="flex-1 py-3 border-2 border-gray-100 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors"
                 >
                   Batal
@@ -1202,7 +2373,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                   type="submit"
                   className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
                 >
-                  Simpan
+                  {editingAssignmentId ? 'Update' : 'Simpan'}
                 </button>
               </div>
             </form>

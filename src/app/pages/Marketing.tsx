@@ -20,6 +20,7 @@ import {
     XCircle,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Area,
     AreaChart,
@@ -34,16 +35,17 @@ import {
     YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
-import { useConfirmDialog, useLeads, useMarketingPersons, useUnitStatuses } from '../../hooks';
-import { mockConversionChartData, mockSourceChartData } from '../../lib/mockMarketing';
+import { useAuth } from '../../context/AuthContext';
+import { useConfirmDialog, useHousingUnits, useLeads, useMarketingPersons, useProjects } from '../../hooks';
 import { formatRupiah } from '../../lib/utils';
 import type {
     CreateLeadPayload,
     CreateMarketingPersonPayload,
+    HousingUnit,
     Lead,
     LeadStatus,
     MarketingPerson,
-    UnitStatus,
+    Project,
 } from '../../types';
 import Housing from '../components/Housing';
 
@@ -62,13 +64,12 @@ const statusBadgeClass = (status: LeadStatus) => {
   }
 };
 
-const unitStatusStyle = (status: UnitStatus['status']) => {
+/** Style untuk status unit di Siteplan (sumber: Kavling & Unit / housing_units) */
+const housingStatusStyle = (status: HousingUnit['status']) => {
   switch (status) {
     case 'Tersedia': return { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', dot: 'bg-green-500' };
-    case 'Indent': return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-600', dot: 'bg-yellow-500' };
-    case 'Booking': return { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600', dot: 'bg-orange-500' };
+    case 'Proses': return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-600', dot: 'bg-yellow-500' };
     case 'Sold': return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600', dot: 'bg-red-500' };
-    case 'Batal': return { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-400', dot: 'bg-gray-400' };
     default: return { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-400', dot: 'bg-gray-400' };
   }
 };
@@ -89,19 +90,42 @@ const emptyMarketingForm: CreateMarketingPersonPayload = {
 // ═════════════════════════════════════════════════════════════
 
 export function Marketing() {
+  const navigate = useNavigate();
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
+  const { user } = useAuth();
 
   // ── Hooks (single source of truth) ─────────────────────────
-  const leadHook = useLeads();
-  const personsHook = useMarketingPersons();
-  const unitHook = useUnitStatuses();
+  const [leadPage, setLeadPage] = useState(1);
+  const [leadPerPage, setLeadPerPage] = useState(10);
+  const [leadProjectId, setLeadProjectId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<LeadStatus | 'Semua'>('Semua');
+  const leadParams = useMemo(() => ({
+    page: leadPage,
+    limit: leadPerPage,
+    search: searchQuery || undefined,
+    status: statusFilter === 'Semua' ? undefined : statusFilter,
+    project_id: leadProjectId || undefined,
+  }), [leadPage, leadPerPage, searchQuery, statusFilter, leadProjectId]);
+  const leadHook = useLeads(leadParams);
+  const personsHook = useMarketingPersons({ limit: 500 });
+  const { projects } = useProjects();
+  const [siteplanProjectId, setSiteplanProjectId] = useState<string>('');
+  const siteplanHousing = useHousingUnits(undefined, { limit: 500, project_id: siteplanProjectId || undefined });
+
+  // Lead modal: Minat Unit = pilih proyek + unit
+  const [newLeadProjectId, setNewLeadProjectId] = useState('');
+  const [newLeadUnitId, setNewLeadUnitId] = useState('');
+  const leadFormUnits = useHousingUnits(undefined, { limit: 500, project_id: newLeadProjectId || undefined });
 
   // ── Tab state ──────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'leads' | 'team' | 'siteplan' | 'analytics' | 'housing'>('leads');
 
-  // ── Search & filter ────────────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<LeadStatus | 'Semua'>('Semua');
+  // ── Team pagination ────────────────────────────────────────
+  const [teamPage, setTeamPage] = useState(1);
+  const [teamPerPage, setTeamPerPage] = useState(10);
+  const teamParams = useMemo(() => ({ page: teamPage, limit: teamPerPage }), [teamPage, teamPerPage]);
+  const teamHook = useMarketingPersons(teamParams);
 
   // ── Lead modals ────────────────────────────────────────────
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -109,6 +133,9 @@ export function Marketing() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editingLeadProjectId, setEditingLeadProjectId] = useState('');
+  const [editingLeadUnitId, setEditingLeadUnitId] = useState('');
+  const editingLeadUnits = useHousingUnits(undefined, { limit: 500, project_id: editingLeadProjectId || undefined });
 
   // ── Marketing modals ───────────────────────────────────────
   const [isAddMarketingModalOpen, setIsAddMarketingModalOpen] = useState(false);
@@ -117,8 +144,8 @@ export function Marketing() {
   const [isEditMarketingModalOpen, setIsEditMarketingModalOpen] = useState(false);
   const [editingMarketing, setEditingMarketing] = useState<MarketingPerson | null>(null);
 
-  // ── Siteplan selection ─────────────────────────────────────
-  const [selectedUnit, setSelectedUnit] = useState<UnitStatus | null>(null);
+  // ── Siteplan selection (unit = housing unit dari Kavling & Unit) ─
+  const [selectedUnit, setSelectedUnit] = useState<HousingUnit | null>(null);
 
   // ── Computed ───────────────────────────────────────────────
 
@@ -132,17 +159,8 @@ export function Marketing() {
     ];
   }, [leadHook.stats]);
 
-  const filteredLeads = useMemo(() => {
-    return leadHook.leads.filter((l) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        l.name.toLowerCase().includes(q) ||
-        (l.phone ?? '').includes(searchQuery) ||
-        (l.interest ?? '').toLowerCase().includes(q);
-      const matchesStatus = statusFilter === 'Semua' || l.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [leadHook.leads, searchQuery, statusFilter]);
+  const leadsList = leadHook.leads;
+  const leadPagination = leadHook.pagination;
 
   // ── Lead handlers ──────────────────────────────────────────
 
@@ -150,14 +168,21 @@ export function Marketing() {
     e.preventDefault();
     if (!newLead.name) { toast.error('Nama wajib diisi'); return; }
     try {
-      await leadHook.create(newLead);
+      await leadHook.create({
+        ...newLead,
+        housing_unit_id: newLeadUnitId || undefined,
+      });
       setIsAddModalOpen(false);
       setNewLead({ ...emptyLeadForm });
+      setNewLeadProjectId('');
+      setNewLeadUnitId('');
     } catch { /* hook handles toast */ }
   };
 
   const startEditingLead = (lead: Lead) => {
     setEditingLead({ ...lead });
+    setEditingLeadProjectId(lead.housingUnit?.project_id ?? '');
+    setEditingLeadUnitId(lead.housing_unit_id ?? '');
     setIsEditModalOpen(true);
   };
 
@@ -169,7 +194,7 @@ export function Marketing() {
         name: editingLead.name,
         phone: editingLead.phone,
         email: editingLead.email,
-        interest: editingLead.interest,
+        housing_unit_id: editingLeadUnitId || undefined,
         source: editingLead.source,
         status: editingLead.status,
         marketing_id: editingLead.marketing_id,
@@ -178,6 +203,8 @@ export function Marketing() {
       });
       setIsEditModalOpen(false);
       setEditingLead(null);
+      setEditingLeadProjectId('');
+      setEditingLeadUnitId('');
     } catch { /* hook handles toast */ }
   };
 
@@ -194,6 +221,7 @@ export function Marketing() {
     if (!newMarketing.name) { toast.error('Nama wajib diisi'); return; }
     try {
       await personsHook.create(newMarketing);
+      teamHook.refetch();
       setIsAddMarketingModalOpen(false);
       setNewMarketing({ ...emptyMarketingForm });
     } catch { /* hook handles toast */ }
@@ -215,6 +243,7 @@ export function Marketing() {
         target: editingMarketing.target,
         is_active: editingMarketing.is_active,
       });
+      teamHook.refetch();
       setIsEditMarketingModalOpen(false);
       setEditingMarketing(null);
     } catch { /* hook handles toast */ }
@@ -222,16 +251,20 @@ export function Marketing() {
 
   const handleDeleteMarketing = async (id: string) => {
     if (await showConfirm({ title: 'Hapus Marketing', description: 'Hapus data marketing ini?', variant: 'danger' })) {
-      try { await personsHook.remove(id); } catch { /* hook handles toast */ }
+      try {
+        await personsHook.remove(id);
+        teamHook.refetch();
+      } catch { /* hook handles toast */ }
     }
   };
 
-  // ── Siteplan handler ───────────────────────────────────────
+  // ── Siteplan handler (update status unit di Kavling & Unit) ───
 
-  const handleBookUnit = async (unitCode: string) => {
+  const handleBookUnit = async (unit: HousingUnit) => {
     try {
-      await unitHook.update(unitCode, { status: 'Booking' });
+      await siteplanHousing.update(unit.id, { status: 'Proses' });
       setSelectedUnit(null);
+      await siteplanHousing.refetch();
     } catch { /* hook handles toast */ }
   };
 
@@ -294,16 +327,26 @@ export function Marketing() {
                 type="text"
                 placeholder="Cari nama, No. HP, atau unit..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setLeadPage(1); }}
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none transition-all"
               />
             </div>
-            <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
+              <select
+                value={leadProjectId}
+                onChange={(e) => { setLeadProjectId(e.target.value); setLeadPage(1); }}
+                className="pl-3 pr-8 py-2.5 bg-gray-50 text-gray-600 rounded-xl text-sm font-bold border border-gray-200 focus:ring-2 focus:ring-primary outline-none appearance-none cursor-pointer hover:bg-gray-100 transition-all"
+              >
+                <option value="">Semua Proyek</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
               <div className="relative flex-1 md:flex-none">
                 <Filter size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as LeadStatus | 'Semua')}
+                  onChange={(e) => { setStatusFilter(e.target.value as LeadStatus | 'Semua'); setLeadPage(1); }}
                   className="w-full md:w-auto pl-10 pr-8 py-2.5 bg-gray-50 text-gray-600 rounded-xl text-sm font-bold border border-gray-200 focus:ring-2 focus:ring-primary outline-none appearance-none cursor-pointer hover:bg-gray-100 transition-all"
                 >
                   <option value="Semua">Semua Status</option>
@@ -337,7 +380,7 @@ export function Marketing() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredLeads.map((lead) => (
+                  {leadsList.map((lead) => (
                     <tr key={lead.id} className="hover:bg-gray-50/50 transition-colors group">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -368,9 +411,9 @@ export function Marketing() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="space-y-1">
-                          {lead.interest && (
+                          {(lead.housingUnit?.unit_code ?? lead.interest) && (
                             <span className="inline-block px-2 py-0.5 bg-primary/5 text-primary text-[10px] font-bold rounded uppercase">
-                              Unit {lead.interest}
+                              Unit {lead.housingUnit?.unit_code ?? lead.interest}
                             </span>
                           )}
                           {lead.source && (
@@ -422,7 +465,7 @@ export function Marketing() {
                   ))}
                 </tbody>
               </table>
-              {filteredLeads.length === 0 && (
+              {leadsList.length === 0 && (
                 <div className="py-20 text-center space-y-3">
                   <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto text-gray-300">
                     <Search size={32} />
@@ -431,6 +474,42 @@ export function Marketing() {
                 </div>
               )}
             </div>
+            {leadPagination && leadPagination.total_pages > 0 && (
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4 text-sm">
+                <div className="flex items-center gap-4">
+                  <span className="text-gray-600 font-medium">
+                    Halaman {leadPagination.page} dari {leadPagination.total_pages} ({leadPagination.total} data)
+                  </span>
+                  <select
+                    value={leadPerPage}
+                    onChange={(e) => { setLeadPerPage(Number(e.target.value)); setLeadPage(1); }}
+                    className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg font-medium text-gray-700 focus:ring-2 focus:ring-primary outline-none"
+                  >
+                    <option value={10}>10 per halaman</option>
+                    <option value={20}>20 per halaman</option>
+                    <option value={50}>50 per halaman</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={leadPagination.page <= 1}
+                    onClick={() => setLeadPage((p) => Math.max(1, p - 1))}
+                    className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    Sebelumnya
+                  </button>
+                  <button
+                    type="button"
+                    disabled={leadPagination.page >= leadPagination.total_pages}
+                    onClick={() => setLeadPage((p) => Math.min(leadPagination.total_pages, p + 1))}
+                    className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    Selanjutnya
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -467,7 +546,7 @@ export function Marketing() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {personsHook.persons.map((person) => (
+                  {teamHook.persons.map((person) => (
                     <tr key={person.id} className="hover:bg-gray-50/50 transition-colors group">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -518,7 +597,7 @@ export function Marketing() {
                   ))}
                 </tbody>
               </table>
-              {personsHook.persons.length === 0 && (
+              {teamHook.persons.length === 0 && (
                 <div className="py-20 text-center space-y-3">
                   <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto text-gray-300">
                     <Users size={32} />
@@ -527,6 +606,42 @@ export function Marketing() {
                 </div>
               )}
             </div>
+            {teamHook.pagination && teamHook.pagination.total_pages > 0 && (
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4 text-sm">
+                <div className="flex items-center gap-4">
+                  <span className="text-gray-600 font-medium">
+                    Halaman {teamHook.pagination.page} dari {teamHook.pagination.total_pages} ({teamHook.pagination.total} data)
+                  </span>
+                  <select
+                    value={teamPerPage}
+                    onChange={(e) => { setTeamPerPage(Number(e.target.value)); setTeamPage(1); }}
+                    className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg font-medium text-gray-700 focus:ring-2 focus:ring-primary outline-none"
+                  >
+                    <option value={10}>10 per halaman</option>
+                    <option value={20}>20 per halaman</option>
+                    <option value={50}>50 per halaman</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={teamHook.pagination.page <= 1}
+                    onClick={() => setTeamPage((p) => Math.max(1, p - 1))}
+                    className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    Sebelumnya
+                  </button>
+                  <button
+                    type="button"
+                    disabled={teamHook.pagination.page >= teamHook.pagination.total_pages}
+                    onClick={() => setTeamPage((p) => Math.min(teamHook.pagination!.total_pages, p + 1))}
+                    className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    Selanjutnya
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -537,7 +652,18 @@ export function Marketing() {
           {/* Main Siteplan View */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-6 flex gap-3">
+              <div className="absolute top-0 right-0 p-6 flex gap-3 items-center">
+                <label className="text-xs font-bold text-gray-500 uppercase">Proyek</label>
+                <select
+                  value={siteplanProjectId}
+                  onChange={(e) => setSiteplanProjectId(e.target.value)}
+                  className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Semua Proyek</option>
+                  {(projects ?? []).map((p: Project) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
                 <button className="p-2 bg-white border border-gray-100 rounded-lg shadow-sm hover:shadow-md transition-all">
                   <Plus size={18} />
                 </button>
@@ -546,17 +672,20 @@ export function Marketing() {
                 </button>
               </div>
 
-              <h3 className="text-xl font-bold mb-8">Peta Interaktif - Emerald Heights</h3>
+              <h3 className="text-xl font-bold mb-8">
+                Peta Interaktif — {siteplanProjectId ? (projects?.find((p: Project) => p.id === siteplanProjectId)?.name ?? 'Proyek') : (user?.company?.settings?.app_name || 'Semua Proyek')}
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">Data dari Kavling & Unit. Pilih proyek untuk menampilkan siteplan per proyek.</p>
 
               <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
-                {unitHook.unitStatuses.map((unit) => {
-                  const style = unitStatusStyle(unit.status);
+                {siteplanHousing.units.map((unit) => {
+                  const style = housingStatusStyle(unit.status);
                   return (
                     <button
-                      key={unit.unit_code}
+                      key={unit.id}
                       onClick={() => setSelectedUnit(unit)}
                       className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all hover:scale-105 active:scale-95 ${
-                        selectedUnit?.unit_code === unit.unit_code ? 'ring-4 ring-primary/20 border-primary shadow-lg' :
+                        selectedUnit?.id === unit.id ? 'ring-4 ring-primary/20 border-primary shadow-lg' :
                         `${style.bg} ${style.border} ${style.text}`
                       }`}
                     >
@@ -567,11 +696,15 @@ export function Marketing() {
                 })}
               </div>
 
+              {siteplanHousing.units.length === 0 && !siteplanHousing.isLoading && (
+                <p className="text-center text-gray-500 py-8">Belum ada unit. Tambah unit di tab <strong>Kavling & Unit</strong>.</p>
+              )}
+
               {/* Legend */}
               <div className="mt-12 flex flex-wrap justify-center gap-8 bg-gray-50 p-6 rounded-2xl border border-dashed border-gray-200">
-                {(['Tersedia', 'Indent', 'Booking', 'Sold', 'Batal'] as const).map((status) => {
-                  const style = unitStatusStyle(status);
-                  const count = unitHook.unitStatuses.filter((u) => u.status === status).length;
+                {(['Tersedia', 'Proses', 'Sold'] as const).map((status) => {
+                  const style = housingStatusStyle(status);
+                  const count = siteplanHousing.units.filter((u) => u.status === status).length;
                   return (
                     <div key={status} className="flex items-center gap-3">
                       <div className={`w-5 h-5 ${style.bg} border-2 ${style.border} rounded-lg`} />
@@ -593,7 +726,7 @@ export function Marketing() {
                 <div className="space-y-6 animate-in slide-in-from-right duration-300">
                   <div className="flex items-center justify-between">
                     <h4 className="text-lg font-bold">Detail Unit {selectedUnit.unit_code}</h4>
-                    <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${unitStatusStyle(selectedUnit.status).bg} ${unitStatusStyle(selectedUnit.status).text}`}>
+                    <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${housingStatusStyle(selectedUnit.status).bg} ${housingStatusStyle(selectedUnit.status).text}`}>
                       {selectedUnit.status}
                     </span>
                   </div>
@@ -601,11 +734,11 @@ export function Marketing() {
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-400 font-bold uppercase">Harga</span>
-                      <span className="text-sm font-bold text-gray-900">{selectedUnit.price ? formatRupiah(selectedUnit.price) : '-'}</span>
+                      <span className="text-sm font-bold text-gray-900">{selectedUnit.harga_jual != null ? formatRupiah(selectedUnit.harga_jual) : '-'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-400 font-bold uppercase">Tipe</span>
-                      <span className="text-sm font-bold text-gray-900">LB 45 / LT 90</span>
+                      <span className="text-sm font-bold text-gray-900">{selectedUnit.unit_type || '—'}</span>
                     </div>
                     {selectedUnit.notes && (
                       <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
@@ -619,7 +752,7 @@ export function Marketing() {
                     {selectedUnit.status === 'Tersedia' ? (
                       <>
                         <button
-                          onClick={() => handleBookUnit(selectedUnit.unit_code)}
+                          onClick={() => handleBookUnit(selectedUnit)}
                           className="w-full py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
                         >
                           <CheckCircle2 size={18} />
@@ -630,7 +763,24 @@ export function Marketing() {
                         </button>
                       </>
                     ) : (
-                      <button className="w-full py-3 bg-gray-50 text-gray-600 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-all flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => {
+                          const consumerId = selectedUnit.consumer_id ?? (selectedUnit.consumer as { id?: string } | undefined)?.id;
+                          if (consumerId) {
+                            navigate('/finance', { state: { openDetailId: consumerId } });
+                          } else {
+                            navigate('/finance', {
+                              state: {
+                                openReceivable: true,
+                                preselectedUnitId: selectedUnit.id,
+                                preselectedUnitCode: selectedUnit.unit_code,
+                                preselectedTotalPrice: selectedUnit.harga_jual,
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full py-3 bg-primary/10 text-primary rounded-xl font-bold border border-primary/20 hover:bg-primary/20 transition-all flex items-center justify-center gap-2"
+                      >
                         <TrendingUp size={18} />
                         Lihat Progres Bayar
                       </button>
@@ -653,13 +803,13 @@ export function Marketing() {
                 Update Target
               </h4>
               <p className="text-xs text-primary-foreground/80 mb-4 leading-relaxed text-left">
-                Anda hanya butuh {Math.max(0, 15 - unitHook.unitStatuses.filter((u) => u.status === 'Sold').length)} unit closing lagi untuk mencapai target bulanan!
+                Anda hanya butuh {Math.max(0, 15 - siteplanHousing.units.filter((u) => u.status === 'Sold').length)} unit closing lagi untuk mencapai target bulanan!
               </p>
               <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden mb-2">
-                <div className="bg-white h-full" style={{ width: `${(unitHook.unitStatuses.filter((u) => u.status === 'Sold').length / 15) * 100}%` }} />
+                <div className="bg-white h-full" style={{ width: `${Math.min(100, (siteplanHousing.units.filter((u) => u.status === 'Sold').length / 15) * 100)}%` }} />
               </div>
               <div className="flex justify-between text-[10px] font-bold">
-                <span>{unitHook.unitStatuses.filter((u) => u.status === 'Sold').length} Sold</span>
+                <span>{siteplanHousing.units.filter((u) => u.status === 'Sold').length} Sold</span>
                 <span>Target: 15</span>
               </div>
             </div>
@@ -685,7 +835,7 @@ export function Marketing() {
               </div>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mockConversionChartData}>
+                  <AreaChart data={[]}>
                     <defs>
                       <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#b7860f" stopOpacity={0.1} />
@@ -713,7 +863,7 @@ export function Marketing() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={mockSourceChartData}
+                      data={[]}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -721,7 +871,7 @@ export function Marketing() {
                       paddingAngle={5}
                       dataKey="value"
                     >
-                      {mockSourceChartData.map((_entry, index) => (
+                      {[].map((_entry: unknown, index: number) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -735,10 +885,10 @@ export function Marketing() {
         </div>
       )}
 
-      {/* ─── Housing Tab ───────────────────────────────────── */}
+      {/* ─── Housing Tab (Read-only) ───────────────────────── */}
       {activeTab === 'housing' && (
         <div className="space-y-8 animate-in zoom-in-95 duration-300 text-left">
-          <Housing />
+          <Housing readOnly />
         </div>
       )}
 
@@ -785,17 +935,37 @@ export function Marketing() {
                     />
                   </div>
                 </div>
-                {/* interest + source */}
+                {/* Minat Unit: pilih proyek lalu unit */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Minat Unit</label>
-                    <input
-                      type="text" value={newLead.interest ?? ''}
-                      onChange={(e) => setNewLead({ ...newLead, interest: e.target.value })}
-                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all"
-                      placeholder="A-01, B-05, dll"
-                    />
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Proyek</label>
+                    <select
+                      value={newLeadProjectId}
+                      onChange={(e) => { setNewLeadProjectId(e.target.value); setNewLeadUnitId(''); }}
+                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="">Pilih Proyek...</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Minat Unit</label>
+                    <select
+                      value={newLeadUnitId}
+                      onChange={(e) => setNewLeadUnitId(e.target.value)}
+                      disabled={!newLeadProjectId}
+                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all appearance-none cursor-pointer disabled:opacity-60"
+                    >
+                      <option value="">Pilih Unit...</option>
+                      {leadFormUnits.units.map((u) => (
+                        <option key={u.id} value={u.id}>{u.unit_code}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sumber</label>
                     <select
@@ -903,16 +1073,37 @@ export function Marketing() {
                     />
                   </div>
                 </div>
-                {/* interest + source */}
+                {/* Minat Unit: pilih proyek lalu unit */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Minat Unit</label>
-                    <input
-                      type="text" value={editingLead.interest ?? ''}
-                      onChange={(e) => setEditingLead({ ...editingLead, interest: e.target.value })}
-                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all"
-                    />
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Proyek</label>
+                    <select
+                      value={editingLeadProjectId}
+                      onChange={(e) => { setEditingLeadProjectId(e.target.value); setEditingLeadUnitId(''); }}
+                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="">Pilih Proyek...</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Minat Unit</label>
+                    <select
+                      value={editingLeadUnitId}
+                      onChange={(e) => setEditingLeadUnitId(e.target.value)}
+                      disabled={!editingLeadProjectId}
+                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all appearance-none cursor-pointer disabled:opacity-60"
+                    >
+                      <option value="">Pilih Unit...</option>
+                      {editingLeadUnits.units.map((u) => (
+                        <option key={u.id} value={u.id}>{u.unit_code}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sumber</label>
                     <select

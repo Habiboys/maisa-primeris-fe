@@ -10,8 +10,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { USE_MOCK_DATA } from '../lib/config';
-import { MOCK } from '../lib/mockData';
 import { getErrorMessage } from '../lib/utils';
 import { financeService } from '../services/finance.service';
 import type {
@@ -42,14 +40,6 @@ export function useTransactions(initialParams?: TransactionListParams) {
   const [params, setParams] = useState<TransactionListParams | undefined>(initialParams);
 
   const fetchTransactions = useCallback(async () => {
-    if (USE_MOCK_DATA) {
-      setTransactions(MOCK.transactions as unknown as Transaction[]);
-      setPagination({ page: 1, limit: 20, total: MOCK.transactions.length, total_pages: 1 });
-      const masuk = MOCK.transactions.filter(t => t.type === 'Pemasukan').reduce((s, t) => s + t.amount, 0);
-      const keluar = MOCK.transactions.filter(t => t.type === 'Pengeluaran').reduce((s, t) => s + t.amount, 0);
-      setSummary({ kas_masuk: masuk, kas_keluar: keluar, saldo: masuk - keluar });
-      return;
-    }
     setIsLoading(true);
     try {
       const [res, sum] = await Promise.all([
@@ -97,7 +87,8 @@ export function useTransactions(initialParams?: TransactionListParams) {
   return {
     transactions, summary, pagination, isLoading,
     refetch: fetchTransactions, setParams, create, update, remove,
-    exportUrl: financeService.getExportUrl(),
+    exportTransactions: financeService.exportTransactions,
+    exportConsumers: financeService.exportConsumers,
   };
 }
 
@@ -108,10 +99,6 @@ export function useConsumers(search?: string) {
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchConsumers = useCallback(async () => {
-    if (USE_MOCK_DATA) {
-      setConsumers(MOCK.piutang as unknown as Consumer[]);
-      return;
-    }
     setIsLoading(true);
     try {
       const res = await financeService.getConsumers(search ? { search } : undefined);
@@ -159,11 +146,6 @@ export function useConsumerDetail(consumerId: string | null) {
 
   const fetchConsumer = useCallback(async () => {
     if (!consumerId) { setConsumer(null); return; }
-    if (USE_MOCK_DATA) {
-      const mock = (MOCK.piutang as unknown as Consumer[]).find(c => c.id === consumerId) || null;
-      setConsumer(mock);
-      return;
-    }
     setIsLoading(true);
     try {
       const data = await financeService.getConsumerById(consumerId);
@@ -185,11 +167,6 @@ export function usePaymentHistory(consumerId: string) {
 
   const fetchPayments = useCallback(async () => {
     if (!consumerId) return;
-    if (USE_MOCK_DATA) {
-      const mock = (MOCK.piutang as unknown as Consumer[]).find(c => c.id === consumerId);
-      setPayments((mock?.payments || []) as PaymentHistory[]);
-      return;
-    }
     setIsLoading(true);
     try {
       const data = await financeService.getPayments(consumerId);

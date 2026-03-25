@@ -22,13 +22,33 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { toast } from 'sonner';
 import { getErrorMessage } from '../lib/utils';
 import { authService } from '../services/auth.service';
-import type { AuthUser, LoginPayload } from '../types';
+import type { AuthUser, CompanyBranding, LoginPayload } from '../types';
+
+const DEFAULT_BRANDING: CompanyBranding = {
+  app_name: 'Primeris One',
+  logo_url: null,
+  primary_color: '#b7860f',
+  secondary_color: '#14b8a6',
+  accent_color: '#f59e0b',
+};
+
+const applyBranding = (branding?: CompanyBranding | null) => {
+  const b = branding ?? DEFAULT_BRANDING;
+  const root = document.documentElement;
+  root.style.setProperty('--primary', b.primary_color || DEFAULT_BRANDING.primary_color);
+  root.style.setProperty('--secondary', b.secondary_color || DEFAULT_BRANDING.secondary_color);
+  root.style.setProperty('--accent', b.accent_color || DEFAULT_BRANDING.accent_color);
+  root.style.setProperty('--sidebar-primary', b.primary_color || DEFAULT_BRANDING.primary_color);
+  root.style.setProperty('--secondary-foreground', b.primary_color || DEFAULT_BRANDING.primary_color);
+  document.title = b.app_name || DEFAULT_BRANDING.app_name;
+};
 
 // ── Tipe untuk nilai yang disediakan context ─────────────────
 interface AuthContextValue {
   user: AuthUser | null;         // null = belum login
   token: string | null;
   isLoading: boolean;            // proses login sedang berjalan
+  isInitialized: boolean;        // localStorage auth bootstrap selesai
   isAuthenticated: boolean;      // shortcut: user !== null
   login: (payload: LoginPayload) => Promise<void>;
   logout: () => void;
@@ -42,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<AuthUser | null>(null);
   const [token, setToken]     = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // Saat pertama kali mount → cek apakah ada sesi tersimpan
   useEffect(() => {
@@ -58,7 +79,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem('user');
       }
     }
+
+    setIsInitialized(true);
   }, []);
+
+  useEffect(() => {
+    // Platform Owner selalu pakai default branding
+    if (user?.role === 'Platform Owner') {
+      applyBranding(DEFAULT_BRANDING);
+    } else if (user && user.company_id) {
+      applyBranding(user.company?.settings ?? null);
+    } else {
+      applyBranding(DEFAULT_BRANDING);
+    }
+  }, [user]);
 
   // ── Login ───────────────────────────────────────────────────
   const login = useCallback(async (payload: LoginPayload) => {
@@ -94,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     token,
     isLoading,
+    isInitialized,
     isAuthenticated: user !== null,
     login,
     logout,

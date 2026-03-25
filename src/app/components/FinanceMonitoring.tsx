@@ -6,8 +6,6 @@ import {
   Plus
 } from 'lucide-react';
 import { useConsumers } from '../../hooks';
-import { USE_MOCK_DATA } from '../../lib/config';
-import { MOCK } from '../../lib/mockData';
 import { formatRupiah } from '../../lib/utils';
 
 interface BillingItem {
@@ -34,26 +32,24 @@ interface MonitoringData {
 export function FinanceMonitoring({ onDetail }: { onDetail: (id: string) => void }) {
   const { consumers } = useConsumers();
 
-  const data: MonitoringData[] = USE_MOCK_DATA
-    ? MOCK.monitoring
-    : consumers.map((c, idx) => ({
-        id: c.id,
-        no: idx + 1,
-        name: c.name,
-        phone: c.phone || '-',
-        payment_scheme: c.payment_scheme || '-',
-        unit_code: c.unit_code || '-',
-        items: (c.payments || []).map((p, i) => ({
-          id: p.id || `p-${i}`,
-          label: p.notes || `Pembayaran ${i + 1}`,
-          amount: p.amount,
-          type: 'payment' as const,
-        })),
-        status: c.status === 'Lunas' ? 'LUNAS' : c.status === 'Dibatalkan' ? 'HOLD' : 'PROCESS',
-        total_price: c.total_price,
-        paid_amount: c.paid_amount,
-        sisa: c.total_price - c.paid_amount,
-      }));
+  const data: MonitoringData[] = consumers.map((c, idx) => ({
+    id: c.id,
+    no: idx + 1,
+    name: c.name,
+    phone: c.phone || '-',
+    payment_scheme: c.payment_scheme || '-',
+    unit_code: c.unit_code || '-',
+    items: (c.payments || []).map((p, i) => ({
+      id: p.id || `p-${i}`,
+      label: p.notes || `Pembayaran ${i + 1}`,
+      amount: p.amount,
+      type: 'payment' as const,
+    })),
+    status: c.status === 'Lunas' ? 'LUNAS' : c.status === 'Dibatalkan' ? 'HOLD' : 'PROCESS',
+    total_price: c.total_price,
+    paid_amount: c.paid_amount,
+    sisa: c.total_price - c.paid_amount,
+  }));
 
   const getStatusColor = (status: string) => {
     switch (status) {

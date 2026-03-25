@@ -65,10 +65,17 @@ export interface PaymentHistory {
   id: string;
   consumer_id: string;
   payment_date: string;               // DATEONLY → 'YYYY-MM-DD'
-  amount: number;
+  amount: number;                      // net: debit - credit
+  debit?: number;                      // pembayaran (masuk)
+  credit?: number;                    // pengembalian (keluar)
   payment_method?: string;
   notes?: string;
   receipt_file?: string;
+  estimasi_date?: string;             // DATEONLY, optional
+  status?: string;                   // e.g. LUNAS
+  transaction_name?: string;          // nama transaksi (e.g. DP 1 / Angsuran)
+  transaction_category?: string;     // 'Debit' | 'Kredit' — kategori transaksi
+  category?: string;                 // Booking Fee, Angsuran, Pelunasan, Refund, Lainnya/custom
   created_at: string;
   updated_at: string;
 }
@@ -96,13 +103,20 @@ export interface CreateConsumerPayload {
   project_id?: string;
   total_price: number;
   payment_scheme?: string;
+  /** Link piutang ke unit kavling (housing_units.id) */
+  housing_unit_id?: string;
 }
 
 export interface CreatePaymentPayload {
   payment_date: string;
-  amount: number;
+  amount?: number;                    // legacy: jika debit/credit tidak diisi
+  debit?: number;                     // pembayaran (masuk)
+  credit?: number;                   // pengembalian (keluar)
   payment_method?: string;
   notes?: string;
+  transaction_name?: string;
+  estimasi_date?: string;
+  category?: string;  // Booking Fee, Angsuran, Pelunasan, Refund, or custom when Lainnya
 }
 
 // ── Params ─────────────────────────────────────────────────

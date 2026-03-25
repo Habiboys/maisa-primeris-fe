@@ -1,41 +1,34 @@
 /**
  * hooks/useMarketing.ts
  * Hook untuk mengelola data leads, marketing person, unit status
- *
- * Cara pakai di komponen:
- *   const { leads, isLoading, stats } = useLeads();
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { USE_MOCK_DATA } from '../lib/config';
-import { mockLeadsData, mockLeadStats, mockMarketingPersons, mockUnitStatuses } from '../lib/mockMarketing';
 import { getErrorMessage } from '../lib/utils';
 import { marketingService } from '../services/marketing.service';
 import type { CreateLeadPayload, CreateMarketingPersonPayload, Lead, LeadListParams, LeadStats, MarketingPerson, UnitStatus } from '../types';
 
-// ── Hook leads ────────────────────────────────────────────────────
-
 export function useLeads(initialParams?: LeadListParams) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stats, setStats] = useState<LeadStats | null>(null);
+  const [pagination, setPagination] = useState<{ page: number; limit: number; total: number; total_pages: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [params, setParams] = useState<LeadListParams | undefined>(initialParams);
+  useEffect(() => {
+    if (initialParams !== undefined) setParams(initialParams);
+  }, [initialParams?.page, initialParams?.limit, initialParams?.search, initialParams?.status, initialParams?.project_id]);
 
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) {
-        setLeads(mockLeadsData);
-        setStats(mockLeadStats);
-        return;
-      }
       const [res, s] = await Promise.all([
         marketingService.getLeads(params),
         marketingService.getLeadStats(),
       ]);
-      setLeads(res.data);
+      setLeads(res.data ?? []);
       setStats(s);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
   }, [params]);
@@ -43,18 +36,6 @@ export function useLeads(initialParams?: LeadListParams) {
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
   const create = async (payload: CreateLeadPayload) => {
-    if (USE_MOCK_DATA) {
-      const newLead: Lead = {
-        id: crypto.randomUUID(),
-        ...payload,
-        status: payload.status ?? 'Baru',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setLeads(prev => [newLead, ...prev]);
-      toast.success('Lead berhasil ditambahkan');
-      return newLead;
-    }
     try {
       const l = await marketingService.createLead(payload);
       toast.success('Lead berhasil ditambahkan');
@@ -64,11 +45,6 @@ export function useLeads(initialParams?: LeadListParams) {
   };
 
   const update = async (id: string, payload: Partial<CreateLeadPayload>) => {
-    if (USE_MOCK_DATA) {
-      setLeads(prev => prev.map(l => l.id === id ? { ...l, ...payload, updated_at: new Date().toISOString() } : l));
-      toast.success('Lead berhasil diperbarui');
-      return;
-    }
     try {
       const l = await marketingService.updateLead(id, payload);
       toast.success('Lead berhasil diperbarui');
@@ -78,11 +54,6 @@ export function useLeads(initialParams?: LeadListParams) {
   };
 
   const remove = async (id: string) => {
-    if (USE_MOCK_DATA) {
-      setLeads(prev => prev.filter(l => l.id !== id));
-      toast.success('Lead berhasil dihapus');
-      return;
-    }
     try {
       await marketingService.removeLead(id);
       toast.success('Lead berhasil dihapus');
@@ -90,44 +61,33 @@ export function useLeads(initialParams?: LeadListParams) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { leads, stats, isLoading, refetch: fetchLeads, setParams, create, update, remove };
+  return { leads, stats, pagination, isLoading, refetch: fetchLeads, setParams, create, update, remove };
 }
 
-// ── Hook marketing persons ────────────────────────────────────────
-
-export function useMarketingPersons() {
+export function useMarketingPersons(initialParams?: { page?: number; limit?: number; is_active?: boolean }) {
   const [persons, setPersons] = useState<MarketingPerson[]>([]);
+  const [pagination, setPagination] = useState<{ page: number; limit: number; total: number; total_pages: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [params, setParams] = useState(initialParams);
+  useEffect(() => {
+    if (initialParams && (initialParams.page !== params?.page || initialParams.limit !== params?.limit || initialParams.is_active !== params?.is_active)) {
+      setParams(initialParams);
+    }
+  }, [initialParams?.page, initialParams?.limit, initialParams?.is_active]);
 
   const fetchPersons = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) {
-        setPersons(mockMarketingPersons);
-        return;
-      }
-      const res = await marketingService.getMarketingPersons();
-      setPersons(res.data);
+      const res = await marketingService.getMarketingPersons(params);
+      setPersons(res.data ?? []);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, []);
+  }, [params?.page, params?.limit, params?.is_active]);
 
   useEffect(() => { fetchPersons(); }, [fetchPersons]);
 
   const create = async (payload: CreateMarketingPersonPayload) => {
-    if (USE_MOCK_DATA) {
-      const p: MarketingPerson = {
-        id: crypto.randomUUID(),
-        ...payload,
-        target: payload.target ?? 0,
-        is_active: payload.is_active ?? true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setPersons(prev => [...prev, p]);
-      toast.success('Marketing person ditambahkan');
-      return p;
-    }
     try {
       const p = await marketingService.createMarketingPerson(payload);
       toast.success('Marketing person ditambahkan');
@@ -137,11 +97,6 @@ export function useMarketingPersons() {
   };
 
   const update = async (id: string, payload: Partial<CreateMarketingPersonPayload>) => {
-    if (USE_MOCK_DATA) {
-      setPersons(prev => prev.map(p => p.id === id ? { ...p, ...payload, updated_at: new Date().toISOString() } : p));
-      toast.success('Marketing person diperbarui');
-      return;
-    }
     try {
       const p = await marketingService.updateMarketingPerson(id, payload);
       toast.success('Marketing person diperbarui');
@@ -151,11 +106,6 @@ export function useMarketingPersons() {
   };
 
   const remove = async (id: string) => {
-    if (USE_MOCK_DATA) {
-      setPersons(prev => prev.filter(p => p.id !== id));
-      toast.success('Marketing person dihapus');
-      return;
-    }
     try {
       await marketingService.removeMarketingPerson(id);
       toast.success('Marketing person dihapus');
@@ -163,10 +113,8 @@ export function useMarketingPersons() {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { persons, isLoading, refetch: fetchPersons, create, update, remove };
+  return { persons, pagination, isLoading, refetch: fetchPersons, setParams, create, update, remove };
 }
-
-// ── Hook unit statuses ────────────────────────────────────────────
 
 export function useUnitStatuses() {
   const [unitStatuses, setUnitStatuses] = useState<UnitStatus[]>([]);
@@ -175,10 +123,6 @@ export function useUnitStatuses() {
   const fetchStatuses = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) {
-        setUnitStatuses(mockUnitStatuses);
-        return;
-      }
       const data = await marketingService.getUnitStatuses();
       setUnitStatuses(data);
     } catch (err) { toast.error(getErrorMessage(err)); }
@@ -188,11 +132,6 @@ export function useUnitStatuses() {
   useEffect(() => { fetchStatuses(); }, [fetchStatuses]);
 
   const update = async (unitCode: string, payload: Partial<UnitStatus>) => {
-    if (USE_MOCK_DATA) {
-      setUnitStatuses(prev => prev.map(u => u.unit_code === unitCode ? { ...u, ...payload } : u));
-      toast.success('Status unit diperbarui');
-      return;
-    }
     try {
       const s = await marketingService.updateUnitStatus(unitCode, payload);
       toast.success('Status unit diperbarui');

@@ -8,6 +8,7 @@
 
 export * from './attendance.service';
 export * from './auth.service';
+export * from './company.service';
 export * from './dashboard.service';
 export * from './finance.service';
 export * from './housing.service';

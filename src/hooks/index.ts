@@ -10,6 +10,7 @@
 export { useAuth } from '../context/AuthContext';
 
 export * from './useAttendance';
+export * from './useCompanies';
 export * from './useConfirmDialog';
 export * from './useDashboard';
 export * from './useFinance';

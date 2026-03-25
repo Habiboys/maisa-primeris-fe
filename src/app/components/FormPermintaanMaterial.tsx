@@ -1,6 +1,8 @@
 import { ClipboardList, Plus, Printer, Save, Trash2, X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { sopService } from '../../services/sop.service';
+import { getErrorMessage } from '../../lib/utils';
 
 interface MaterialItem {
   namaBarang: string;
@@ -76,8 +78,6 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
     }
   }, [data, isOpen]);
 
-  if (!isOpen) return null;
-
   const handleAddItem = () => {
     if (!currentItem.namaBarang.trim()) {
       toast.error('Nama barang harus diisi');
@@ -102,158 +102,45 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
     setMaterialRows(materialRows.filter((_, i) => i !== index));
   };
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const printContent = document.getElementById('form-print-content');
-    if (!printContent) return;
+  const getPreviewPayload = useCallback(() => ({
+    noForm: formData.noForm,
+    divisi: formData.divisi,
+    namaPeminta: formData.namaPeminta,
+    items: materialRows.map(r => ({ namaBarang: r.namaBarang, qty: r.qty, satuan: r.satuan, keterangan: r.keterangan ?? '' })),
+    disetujui,
+    diperiksa,
+  }), [formData, materialRows, disetujui, diperiksa]);
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Form Permintaan Material</title>
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            
-            @page {
-              size: A4;
-              margin: 1.5cm;
-            }
-            
-            body {
-              font-family: 'Arial', sans-serif;
-              font-size: 11pt;
-              line-height: 1.4;
-              color: #000;
-            }
-            
-            .header {
-              text-align: center;
-              margin-bottom: 20px;
-            }
-            
-            .header h1 {
-              font-size: 14pt;
-              font-weight: bold;
-              margin-bottom: 5px;
-            }
-            
-            .header .address {
-              font-size: 9pt;
-              margin-bottom: 15px;
-            }
-            
-            .header h2 {
-              font-size: 12pt;
-              font-weight: bold;
-              text-decoration: underline;
-              margin-top: 10px;
-            }
-            
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 20px 0;
-            }
-            
-            table, th, td {
-              border: 1px solid #000;
-            }
-            
-            th {
-              background-color: #f5f5f5;
-              padding: 8px;
-              text-align: center;
-              font-weight: bold;
-              font-size: 10pt;
-            }
-            
-            td {
-              padding: 8px 6px;
-              font-size: 10pt;
-            }
-            
-            .no-col {
-              width: 30px;
-              text-align: center;
-            }
-            
-            .material-col {
-              width: 35%;
-            }
-            
-            .satuan-col {
-              width: 15%;
-              text-align: center;
-            }
-            
-            .volume-col {
-              width: 15%;
-              text-align: center;
-            }
-            
-            .keterangan-col {
-              width: 35%;
-            }
-            
-            .footer {
-              margin-top: 30px;
-            }
-            
-            .signature-section {
-              display: flex;
-              justify-content: space-between;
-              margin-top: 20px;
-            }
-            
-            .signature-box {
-              width: 30%;
-              text-align: center;
-            }
-            
-            .signature-box .label {
-              font-weight: bold;
-              margin-bottom: 60px;
-            }
-            
-            .signature-box .name {
-              border-top: 1px solid #000;
-              padding-top: 5px;
-              display: inline-block;
-              min-width: 150px;
-            }
-            
-            .location-date {
-              text-align: right;
-              margin-bottom: 10px;
-              font-size: 10pt;
-            }
-            
-            @media print {
-              body {
-                print-color-adjust: exact;
-                -webkit-print-color-adjust: exact;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-        </body>
-      </html>
-    `);
+  useEffect(() => {
+    if (!isOpen) return;
+    previewDebounceRef.current && clearTimeout(previewDebounceRef.current);
+    previewDebounceRef.current = setTimeout(() => {
+      setPreviewLoading(true);
+      sopService.getPermintaanPreviewHtml(getPreviewPayload())
+        .then(html => setPreviewHtml(html))
+        .catch(() => setPreviewHtml(''))
+        .finally(() => setPreviewLoading(false));
+    }, 600);
+    return () => { previewDebounceRef.current && clearTimeout(previewDebounceRef.current); };
+  }, [isOpen, getPreviewPayload]);
 
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+  const handleCetakPdf = async () => {
+    try {
+      const blob = await sopService.getPermintaanPdfBlob(getPreviewPayload());
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PermintaanMaterial-${formData.noForm || 'draft'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF berhasil diunduh');
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    }
   };
 
   const handleSave = () => {
@@ -274,11 +161,8 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
       items: filledItems,
       disetujui,
       diperiksa,
-      tanggal: new Date().toLocaleDateString('id-ID', { 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
-      })
+      // simpan tanggal dalam format ISO agar backend tidak bermasalah
+      tanggal: new Date().toISOString().slice(0, 10),
     };
 
     if (onSave) {
@@ -298,11 +182,7 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
     setMaterialRows([...materialRows, ...Array(5).fill({ namaBarang: '', qty: 0, satuan: '', keterangan: '' })]);
   };
 
-  const currentDate = new Date().toLocaleDateString('id-ID', { 
-    day: 'numeric', 
-    month: 'long', 
-    year: 'numeric' 
-  });
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -321,11 +201,11 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={handlePrint}
+              onClick={handleCetakPdf}
               className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
             >
               <Printer size={18} />
-              <span>Preview Cetak</span>
+              <span>Cetak PDF</span>
             </button>
             <button
               onClick={handleSave}
@@ -522,105 +402,26 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
             </div>
           </div>
 
-          {/* Right Side: LIVE PREVIEW (LETTER LOOK) */}
-          <div className="flex-1 bg-[#4b5563] overflow-y-auto p-12 flex justify-center no-scrollbar">
-            <div 
-              className="w-[750px] bg-white shadow-2xl min-h-[950px] p-12 flex flex-col origin-top transform scale-[1.02]" 
-              id="form-print-content"
-            >
-              {/* Header Surat */}
-              <div className="text-center border-b-4 border-gray-900 pb-6 mb-8">
-                <h1 className="text-3xl font-black text-gray-900 tracking-tighter mb-1">MAISA PRIMERIS MANGGALO</h1>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.1em]">
-                  JL. Barang Marao No.3, RT.3 RW.10, Alai Parak Kopi, Kec. Padang Utara, Kota Padang
-                </p>
-                <div className="mt-6 inline-block border-2 border-gray-900 px-8 py-2 bg-gray-50 font-black text-xl tracking-widest uppercase">
-                  Form Permintaan Material
+          {/* Right Side: Preview (sama dengan PDF dari server) */}
+          <div className="flex-1 bg-gray-200 overflow-hidden flex flex-col min-w-0">
+            <div className="px-4 py-2 bg-gray-300 text-xs font-medium text-gray-600 border-b border-gray-300">
+              Preview — sama dengan hasil cetak PDF
+            </div>
+            <div className="flex-1 overflow-auto p-4 flex justify-center">
+              {previewLoading ? (
+                <div className="self-center text-gray-500 text-sm">Memuat preview...</div>
+              ) : previewHtml ? (
+                <div className="bg-white shadow-sm max-w-[210mm] w-full min-h-[297mm] overflow-auto">
+                  <iframe
+                    title="Preview Permintaan Material"
+                    srcDoc={previewHtml}
+                    className="w-full min-h-[297mm] border-0"
+                    style={{ minHeight: '297mm' }}
+                  />
                 </div>
-                <p className="text-xs font-bold text-gray-700 mt-2">Nomor: {formData.noForm || '____________________'}</p>
-              </div>
-
-              {/* Meta Info */}
-              <div className="flex justify-between items-start mb-8 text-sm">
-                <div className="space-y-1">
-                  <div className="flex gap-2">
-                    <span className="w-24 text-gray-500 font-bold uppercase text-[10px]">Nama Peminta</span>
-                    <span className="font-black text-gray-900">: {formData.namaPeminta || '_______________________'}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="w-24 text-gray-500 font-bold uppercase text-[10px]">Divisi</span>
-                    <span className="font-black text-gray-900">: {formData.divisi || '_______________________'}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-gray-900">Padang, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                  <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest">Internal Document</p>
-                </div>
-              </div>
-
-              {/* Table Material */}
-              <div className="flex-1">
-                <table className="w-full border-2 border-gray-900">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border-2 border-gray-900 p-3 text-center text-[10px] font-black w-12 uppercase tracking-widest">No</th>
-                      <th className="border-2 border-gray-900 p-3 text-left text-[10px] font-black uppercase tracking-widest">Uraian Material</th>
-                      <th className="border-2 border-gray-900 p-3 text-center text-[10px] font-black w-24 uppercase tracking-widest">Volume</th>
-                      <th className="border-2 border-gray-900 p-3 text-center text-[10px] font-black w-24 uppercase tracking-widest">Satuan</th>
-                      <th className="border-2 border-gray-900 p-3 text-left text-[10px] font-black uppercase tracking-widest">Keterangan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materialRows.length > 0 ? materialRows.map((row, idx) => (
-                      <tr key={idx} className="bg-white">
-                        <td className="border-2 border-gray-900 p-3 text-center text-xs font-bold">{idx + 1}</td>
-                        <td className="border-2 border-gray-900 p-3 text-xs font-black uppercase">{row.namaBarang}</td>
-                        <td className="border-2 border-gray-900 p-3 text-center text-sm font-black text-primary">{row.qty}</td>
-                        <td className="border-2 border-gray-900 p-3 text-center text-xs font-bold">{row.satuan}</td>
-                        <td className="border-2 border-gray-900 p-3 text-[10px] font-medium leading-tight italic text-gray-600">{row.keterangan || '-'}</td>
-                      </tr>
-                    )) : (
-                      Array(8).fill(0).map((_, idx) => (
-                        <tr key={idx} className="h-10">
-                          <td className="border-2 border-gray-900 p-3 text-center text-xs text-gray-200">{idx + 1}</td>
-                          <td className="border-2 border-gray-900 p-3"></td>
-                          <td className="border-2 border-gray-900 p-3"></td>
-                          <td className="border-2 border-gray-900 p-3"></td>
-                          <td className="border-2 border-gray-900 p-3"></td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Footer Persetujuan */}
-              <div className="mt-16 grid grid-cols-3 gap-12 text-center">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-24 tracking-widest border-b border-gray-200 pb-1">Disetujui</span>
-                  <div className="border-t-2 border-gray-900 pt-2">
-                    <span className="text-xs font-black uppercase">{disetujui || '..........................'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-24 tracking-widest border-b border-gray-200 pb-1">Diperiksa</span>
-                  <div className="border-t-2 border-gray-900 pt-2">
-                    <span className="text-xs font-black uppercase">{diperiksa || '..........................'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-gray-900 uppercase mb-24 tracking-widest border-b border-gray-200 pb-1">Mengajukan</span>
-                  <div className="border-t-2 border-gray-900 pt-2">
-                    <span className="text-xs font-black uppercase">{formData.namaPeminta || '..........................'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footnote */}
-              <div className="mt-auto pt-10 text-[7px] text-gray-400 font-bold uppercase tracking-[0.3em] flex justify-between items-center border-t border-gray-50">
-                <span>Maisa Primeris Procurement Management</span>
-                <span>Dokumen Sah Internal v2.0</span>
-              </div>
+              ) : (
+                <div className="self-center text-gray-400 text-sm">Isi form untuk melihat preview</div>
+              )}
             </div>
           </div>
         </div>

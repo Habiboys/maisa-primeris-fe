@@ -8,27 +8,34 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { USE_MOCK_DATA } from '../lib/config';
-import { mockAkadList, mockBastList, mockPembatalanList, mockPindahUnitList, mockPpjbList } from '../lib/mockLegal';
 import { getErrorMessage } from '../lib/utils';
 import { legalService } from '../services/legal.service';
 import type { Akad, BAST, Pembatalan, PindahUnit, PPJB } from '../types';
 
+export type LegalListParams = { search?: string; page?: number; limit?: number };
+
+const defaultPagination = { page: 1, limit: 10, total: 0, total_pages: 0 };
+
 // ── Hook PPJB ─────────────────────────────────────────────────────
 
-export function usePPJB(search?: string) {
+export function usePPJB(params?: LegalListParams) {
   const [ppjbList, setPpjbList] = useState<PPJB[]>([]);
+  const [pagination, setPagination] = useState<typeof defaultPagination | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [fetchParams, setFetchParams] = useState(params);
+  useEffect(() => {
+    if (params !== undefined) setFetchParams(params);
+  }, [params?.search, params?.page, params?.limit]);
 
   const fetchPPJB = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) { setPpjbList(mockPpjbList); return; }
-      const res = await legalService.getPPJBList(search ? { search } : undefined);
-      setPpjbList(res.data);
+      const res = await legalService.getPPJBList(fetchParams);
+      setPpjbList(res.data ?? []);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, [search]);
+  }, [fetchParams?.search, fetchParams?.page, fetchParams?.limit]);
 
   useEffect(() => { fetchPPJB(); }, [fetchPPJB]);
 
@@ -58,24 +65,29 @@ export function usePPJB(search?: string) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { ppjbList, isLoading, refetch: fetchPPJB, create, update, remove };
+  return { ppjbList, pagination, isLoading, refetch: fetchPPJB, create, update, remove };
 }
 
 // ── Hook Akad ─────────────────────────────────────────────────────
 
-export function useAkad(search?: string) {
+export function useAkad(params?: LegalListParams) {
   const [akadList, setAkadList] = useState<Akad[]>([]);
+  const [pagination, setPagination] = useState<typeof defaultPagination | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [fetchParams, setFetchParams] = useState(params);
+  useEffect(() => {
+    if (params !== undefined) setFetchParams(params);
+  }, [params?.search, params?.page, params?.limit]);
 
   const fetchAkad = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) { setAkadList(mockAkadList); return; }
-      const res = await legalService.getAkadList(search ? { search } : undefined);
-      setAkadList(res.data);
+      const res = await legalService.getAkadList(fetchParams);
+      setAkadList(res.data ?? []);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, [search]);
+  }, [fetchParams?.search, fetchParams?.page, fetchParams?.limit]);
 
   useEffect(() => { fetchAkad(); }, [fetchAkad]);
 
@@ -105,24 +117,29 @@ export function useAkad(search?: string) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { akadList, isLoading, refetch: fetchAkad, create, update, remove };
+  return { akadList, pagination, isLoading, refetch: fetchAkad, create, update, remove };
 }
 
 // ── Hook BAST ─────────────────────────────────────────────────────
 
-export function useBAST(search?: string) {
+export function useBAST(params?: LegalListParams) {
   const [bastList, setBastList] = useState<BAST[]>([]);
+  const [pagination, setPagination] = useState<typeof defaultPagination | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [fetchParams, setFetchParams] = useState(params);
+  useEffect(() => {
+    if (params !== undefined) setFetchParams(params);
+  }, [params?.search, params?.page, params?.limit]);
 
   const fetchBAST = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) { setBastList(mockBastList); return; }
-      const res = await legalService.getBASTList(search ? { search } : undefined);
-      setBastList(res.data);
+      const res = await legalService.getBASTList(fetchParams);
+      setBastList(res.data ?? []);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, [search]);
+  }, [fetchParams?.search, fetchParams?.page, fetchParams?.limit]);
 
   useEffect(() => { fetchBAST(); }, [fetchBAST]);
 
@@ -152,24 +169,29 @@ export function useBAST(search?: string) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { bastList, isLoading, refetch: fetchBAST, create, update, remove };
+  return { bastList, pagination, isLoading, refetch: fetchBAST, create, update, remove };
 }
 
 // ── Hook Pindah Unit ──────────────────────────────────────────────
 
-export function usePindahUnit(search?: string) {
+export function usePindahUnit(params?: LegalListParams) {
   const [pindahList, setPindahList] = useState<PindahUnit[]>([]);
+  const [pagination, setPagination] = useState<typeof defaultPagination | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [fetchParams, setFetchParams] = useState(params);
+  useEffect(() => {
+    if (params !== undefined) setFetchParams(params);
+  }, [params?.search, params?.page, params?.limit]);
 
   const fetchPindah = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) { setPindahList(mockPindahUnitList); return; }
-      const res = await legalService.getPindahUnitList(search ? { search } : undefined);
-      setPindahList(res.data);
+      const res = await legalService.getPindahUnitList(fetchParams);
+      setPindahList(res.data ?? []);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, [search]);
+  }, [fetchParams?.search, fetchParams?.page, fetchParams?.limit]);
 
   useEffect(() => { fetchPindah(); }, [fetchPindah]);
 
@@ -199,24 +221,29 @@ export function usePindahUnit(search?: string) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { pindahList, isLoading, refetch: fetchPindah, create, update, remove };
+  return { pindahList, pagination, isLoading, refetch: fetchPindah, create, update, remove };
 }
 
 // ── Hook Pembatalan ───────────────────────────────────────────────
 
-export function usePembatalan(search?: string) {
+export function usePembatalan(params?: LegalListParams) {
   const [pembatalanList, setPembatalanList] = useState<Pembatalan[]>([]);
+  const [pagination, setPagination] = useState<typeof defaultPagination | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [fetchParams, setFetchParams] = useState(params);
+  useEffect(() => {
+    if (params !== undefined) setFetchParams(params);
+  }, [params?.search, params?.page, params?.limit]);
 
   const fetchPembatalan = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_DATA) { setPembatalanList(mockPembatalanList); return; }
-      const res = await legalService.getPembatalanList(search ? { search } : undefined);
-      setPembatalanList(res.data);
+      const res = await legalService.getPembatalanList(fetchParams);
+      setPembatalanList(res.data ?? []);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, [search]);
+  }, [fetchParams?.search, fetchParams?.page, fetchParams?.limit]);
 
   useEffect(() => { fetchPembatalan(); }, [fetchPembatalan]);
 
@@ -246,5 +273,5 @@ export function usePembatalan(search?: string) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { pembatalanList, isLoading, refetch: fetchPembatalan, create, update, remove };
+  return { pembatalanList, pagination, isLoading, refetch: fetchPembatalan, create, update, remove };
 }

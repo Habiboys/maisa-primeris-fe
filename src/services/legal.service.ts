@@ -9,7 +9,7 @@ import type { Akad, ApiResponse, BAST, PaginatedResponse, Pembatalan, PindahUnit
 
 export const legalService = {
   // ── PPJB ─────────────────────────────────────────────────────
-  async getPPJBList(params?: { search?: string; page?: number }): Promise<PaginatedResponse<PPJB>> {
+  async getPPJBList(params?: { search?: string; page?: number; limit?: number }): Promise<PaginatedResponse<PPJB>> {
     const res = await api.get<PaginatedResponse<PPJB>>('/ppjb', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });
@@ -31,7 +31,7 @@ export const legalService = {
   },
 
   // ── Akad ──────────────────────────────────────────────────────
-  async getAkadList(params?: { search?: string; page?: number }): Promise<PaginatedResponse<Akad>> {
+  async getAkadList(params?: { search?: string; page?: number; limit?: number }): Promise<PaginatedResponse<Akad>> {
     const res = await api.get<PaginatedResponse<Akad>>('/akad', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });
@@ -53,7 +53,7 @@ export const legalService = {
   },
 
   // ── BAST ──────────────────────────────────────────────────────
-  async getBASTList(params?: { search?: string; page?: number }): Promise<PaginatedResponse<BAST>> {
+  async getBASTList(params?: { search?: string; page?: number; limit?: number }): Promise<PaginatedResponse<BAST>> {
     const res = await api.get<PaginatedResponse<BAST>>('/bast', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });
@@ -75,7 +75,7 @@ export const legalService = {
   },
 
   // ── Pindah Unit ──────────────────────────────────────────────
-  async getPindahUnitList(params?: { search?: string; page?: number }): Promise<PaginatedResponse<PindahUnit>> {
+  async getPindahUnitList(params?: { search?: string; page?: number; limit?: number }): Promise<PaginatedResponse<PindahUnit>> {
     const res = await api.get<PaginatedResponse<PindahUnit>>('/pindah-unit', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });
@@ -97,7 +97,7 @@ export const legalService = {
   },
 
   // ── Pembatalan ───────────────────────────────────────────────
-  async getPembatalanList(params?: { search?: string; page?: number }): Promise<PaginatedResponse<Pembatalan>> {
+  async getPembatalanList(params?: { search?: string; page?: number; limit?: number }): Promise<PaginatedResponse<Pembatalan>> {
     const res = await api.get<PaginatedResponse<Pembatalan>>('/pembatalan', {
       params: params ? cleanParams(params as Record<string, unknown>) : undefined,
     });

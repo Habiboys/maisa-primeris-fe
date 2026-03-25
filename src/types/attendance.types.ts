@@ -71,6 +71,7 @@ export interface LeaveRequest {
 export interface ClockInPayload {
   lat: number;
   lng: number;
+  photo?: File;
 }
 
 export interface CreateLeaveRequestPayload {
@@ -78,6 +79,16 @@ export interface CreateLeaveRequestPayload {
   start_date: string;
   end_date: string;
   reason?: string;
+  user_id?: string;
+}
+
+export interface AttendanceSetting {
+  id: string;
+  work_start_time: string;
+  work_end_time: string;
+  late_grace_minutes: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // ── Rekap (frontend-only helper) ──────────────────────────────────
@@ -87,6 +98,7 @@ export interface AttendanceRecap {
   days: number;
   present: number;
   late: number;
+  cuti: number;
   permit: number;
   alpha: number;
   score: number;

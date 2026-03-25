@@ -47,7 +47,8 @@ export const marketingService = {
 
   async getLeadStats(): Promise<LeadStats> {
     const res = await api.get<ApiResponse<LeadStats>>('/leads/stats');
-    return res.data.data;
+    const body = res.data as { data?: LeadStats };
+    return (body?.data ?? body) as LeadStats;
   },
 
   // ── Marketing Persons ────────────────────────────────────────
@@ -80,7 +81,9 @@ export const marketingService = {
   // ── Unit Statuses (Siteplan) ─────────────────────────────────
   async getUnitStatuses(): Promise<UnitStatus[]> {
     const res = await api.get<ApiResponse<UnitStatus[]>>('/unit-statuses');
-    return res.data.data;
+    const body = res.data as { data?: UnitStatus[] };
+    const raw = body?.data ?? body;
+    return Array.isArray(raw) ? raw : [];
   },
 
   async updateUnitStatus(unitCode: string, payload: Partial<UnitStatus>): Promise<UnitStatus> {

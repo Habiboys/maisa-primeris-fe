@@ -8,11 +8,44 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { USE_MOCK_DATA } from '../lib/config';
-import { mockUserLocationAssignments as mockAssignments, mockAttendances, mockLeaveRequests as mockLeaves, mockWorkLocations as mockLocs } from '../lib/mockAttendance';
 import { getErrorMessage } from '../lib/utils';
 import { attendanceService } from '../services/attendance.service';
-import type { Attendance, ClockInPayload, CreateLeaveRequestPayload, LeaveRequest, UserLocationAssignment, WorkLocation } from '../types';
+import type { Attendance, AttendanceSetting, ClockInPayload, CreateLeaveRequestPayload, LeaveRequest, UserLocationAssignment, WorkLocation } from '../types';
+
+// ── Hook pengaturan jam kerja ────────────────────────────────────
+
+export function useAttendanceSettings() {
+  const [settings, setSettings] = useState<AttendanceSetting | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchSettings = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await attendanceService.getAttendanceSettings();
+      setSettings(data);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+  const update = async (payload: Partial<AttendanceSetting>) => {
+    try {
+      const data = await attendanceService.updateAttendanceSettings(payload);
+      setSettings(data);
+      toast.success('Pengaturan jam kerja berhasil diperbarui');
+      return data;
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+      throw err;
+    }
+  };
+
+  return { settings, isLoading, refetch: fetchSettings, update };
+}
 
 // ── Hook absensi ──────────────────────────────────────────────────
 
@@ -21,7 +54,6 @@ export function useAttendance(params?: { user_id?: string; date?: string }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchAttendances = useCallback(async () => {
-    if (USE_MOCK_DATA) { setAttendances(mockAttendances); return; }
     setIsLoading(true);
     try {
       const res = await attendanceService.getAll(params);
@@ -60,7 +92,6 @@ export function useMyAttendance() {
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchMyAttendances = useCallback(async () => {
-    if (USE_MOCK_DATA) { setMyAttendances(mockAttendances.slice(0, 10)); return; }
     setIsLoading(true);
     try {
       const data = await attendanceService.getMy();
@@ -81,7 +112,6 @@ export function useWorkLocations() {
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchLocations = useCallback(async () => {
-    if (USE_MOCK_DATA) { setLocations(mockLocs); return; }
     setIsLoading(true);
     try {
       const data = await attendanceService.getWorkLocations();
@@ -128,7 +158,6 @@ export function useLocationAssignments() {
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchAssignments = useCallback(async () => {
-    if (USE_MOCK_DATA) { setAssignments(mockAssignments); return; }
     setIsLoading(true);
     try {
       const data = await attendanceService.getAssignments();
@@ -161,19 +190,23 @@ export function useLocationAssignments() {
 
 // ── Hook pengajuan izin ───────────────────────────────────────────
 
-export function useLeaveRequests() {
+export function useLeaveRequests(scope: 'all' | 'my' = 'all') {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchRequests = useCallback(async () => {
-    if (USE_MOCK_DATA) { setLeaveRequests(mockLeaves); return; }
     setIsLoading(true);
     try {
-      const res = await attendanceService.getLeaveRequests();
-      setLeaveRequests(res.data);
+      if (scope === 'my') {
+        const data = await attendanceService.getMyLeaveRequests();
+        setLeaveRequests(data);
+      } else {
+        const res = await attendanceService.getLeaveRequests({ limit: 200 });
+        setLeaveRequests(res.data);
+      }
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, []);
+  }, [scope]);
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
@@ -219,6 +252,7 @@ export interface AttendanceRecapEntry {
   name: string;
   present: number;
   late: number;
+  cuti: number;
   permit: number;
   alpha: number;
   score: number;
@@ -226,14 +260,24 @@ export interface AttendanceRecapEntry {
 
 export function useAttendanceRecap(month: number, year: number) {
   const [rawData, setRawData] = useState<Attendance[]>([]);
+  const [leaveData, setLeaveData] = useState<LeaveRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (USE_MOCK_DATA) { setRawData(mockAttendances); return; }
     setIsLoading(true);
     try {
-      const res = await attendanceService.getAll({ month, year, limit: 500 });
-      setRawData(res.data);
+      const [attRes, leaveRes] = await Promise.all([
+        attendanceService.getAll({ month, year, limit: 500 }),
+        attendanceService.getLeaveRequests({
+          status: 'Disetujui',
+          type: 'Cuti',
+          start_date: `${year}-${String(month).padStart(2, '0')}-01`,
+          end_date: `${year}-${String(month).padStart(2, '0')}-31`,
+          limit: 500,
+        }),
+      ]);
+      setRawData(attRes.data);
+      setLeaveData(leaveRes.data);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
   }, [month, year]);
@@ -241,23 +285,43 @@ export function useAttendanceRecap(month: number, year: number) {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const recap = useMemo<AttendanceRecapEntry[]>(() => {
-    const map = new Map<string, { name: string; present: number; late: number; permit: number; alpha: number }>();
+    const map = new Map<string, { name: string; present: number; late: number; cuti: number; permit: number; alpha: number }>();
     for (const a of rawData) {
       const key  = a.user_id;
       const name = a.user?.name ?? 'Unknown';
-      if (!map.has(key)) map.set(key, { name, present: 0, late: 0, permit: 0, alpha: 0 });
+      if (!map.has(key)) map.set(key, { name, present: 0, late: 0, cuti: 0, permit: 0, alpha: 0 });
       const entry = map.get(key)!;
       if (a.status === 'Hadir')              entry.present++;
       else if (a.status === 'Terlambat')     { entry.present++; entry.late++; }
       else if (a.status === 'Izin' || a.status === 'Sakit') entry.permit++;
       else if (a.status === 'Alpha')         entry.alpha++;
     }
+
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+
+    for (const req of leaveData) {
+      const key = req.user_id;
+      const name = req.user?.name ?? 'Unknown';
+      if (!map.has(key)) map.set(key, { name, present: 0, late: 0, cuti: 0, permit: 0, alpha: 0 });
+      const entry = map.get(key)!;
+
+      const reqStart = new Date(req.start_date);
+      const reqEnd = new Date(req.end_date || req.start_date);
+      const overlapStart = reqStart > monthStart ? reqStart : monthStart;
+      const overlapEnd = reqEnd < monthEnd ? reqEnd : monthEnd;
+      if (overlapStart <= overlapEnd) {
+        const diff = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        entry.cuti += diff;
+      }
+    }
+
     return Array.from(map.values()).map(e => {
-      const total = e.present + e.permit + e.alpha;
+      const total = e.present + e.cuti + e.permit + e.alpha;
       const score = total > 0 ? Math.round((e.present / total) * 100) : 100;
       return { ...e, score };
     }).sort((a, b) => b.score - a.score);
-  }, [rawData]);
+  }, [rawData, leaveData, month, year]);
 
   return { recap, isLoading, refetch: fetchData };
 }

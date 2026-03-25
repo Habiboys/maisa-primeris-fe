@@ -235,36 +235,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-8">
-        {/* Recent Activities */}
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h3 className="font-bold text-gray-800 mb-6">Aktivitas Terbaru</h3>
-          <div className="space-y-4">
-            <ActivityItem 
-              user="Budi Santoso" 
-              action="Melakukan update progres unit" 
-              target="Kavling A-12" 
-              time="10 Menit yang lalu" 
-            />
-            <ActivityItem 
-              user="Siti Aminah" 
-              action="Input pembayaran DP" 
-              target="Unit B-05" 
-              time="2 Jam yang lalu" 
-            />
-            <ActivityItem 
-              user="Finance Team" 
-              action="Export laporan keuangan bulanan" 
-              target="Laporan Mei 2024" 
-              time="4 Jam yang lalu" 
-            />
-            <ActivityItem 
-              user="System" 
-              action="Update status unit otomatis" 
-              target="Unit C-02 (Sold)" 
-              time="1 Hari yang lalu" 
-            />
-          </div>
-        </div>
+
       </div>
     </div>
   );

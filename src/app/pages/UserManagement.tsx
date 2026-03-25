@@ -2,12 +2,15 @@ import { CheckCircle2, Download, Edit2, Key, Plus, Search, Trash2, UserMinus, XC
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useActivityLogs, useConfirmDialog, useUsers } from '../../hooks';
+import { useAuth } from '../../context/AuthContext';
 import type { UserRole } from '../../types';
 
 export function UserManagement() {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
   const { users, isLoading, create, update, toggleStatus, remove } = useUsers();
   const { activityLogs } = useActivityLogs();
+  const { user } = useAuth();
+  const isPlatformOwner = user?.role === 'Platform Owner';
 
   const [activeTab, setActiveTab] = useState<'list' | 'logs'>('list');
   const [showModal, setShowModal] = useState(false);
@@ -21,11 +24,18 @@ export function UserManagement() {
     role: 'Project Management' as UserRole,
   });
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === 'Semua Role' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'Semua Status' || user.status === statusFilter;
+  // Hanya tampilkan user dari tenant yang sama (company_id); tenant tidak lihat Platform Owner
+  const currentCompanyId = user?.company_id ?? null;
+  const filteredUsers = users.filter((u) => {
+    if (!isPlatformOwner) {
+      if (u.role === 'Platform Owner') return false;
+      if (currentCompanyId != null && u.company_id !== currentCompanyId) return false;
+    }
+    const matchesSearch =
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'Semua Role' || u.role === roleFilter;
+    const matchesStatus = statusFilter === 'Semua Status' || u.status === statusFilter;
     return matchesSearch && matchesRole && matchesStatus;
   });
 
@@ -50,7 +60,13 @@ export function UserManagement() {
       if (editingUser) {
         await update(editingUser.id, { name: formData.name, email: formData.email, role: formData.role });
       } else {
-        await create({ name: formData.name, email: formData.email, role: formData.role, password: 'Maisa@2026' });
+        await create({
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          password: 'Maisa@2026',
+          ...(currentCompanyId ? { company_id: currentCompanyId } : {}),
+        });
       }
       setShowModal(false);
     } catch {
@@ -137,6 +153,7 @@ export function UserManagement() {
                   onChange={(e) => setRoleFilter(e.target.value)}
                 >
                   <option>Semua Role</option>
+                  {isPlatformOwner && <option>Platform Owner</option>}
                   <option>Super Admin</option>
                   <option>Finance</option>
                   <option>Project Management</option>
@@ -324,6 +341,7 @@ export function UserManagement() {
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
                 >
+                  {isPlatformOwner && <option value="Platform Owner">Platform Owner</option>}
                   <option value="Project Management">Project Management</option>
                   <option value="Finance">Finance</option>
                   <option value="Super Admin">Super Admin</option>
@@ -353,6 +371,7 @@ export function UserManagement() {
 
 function RoleBadge({ role }: { role: string }) {
   const styles = {
+    'Platform Owner': 'bg-indigo-50 text-indigo-700 border-indigo-100',
     'Super Admin': 'bg-purple-50 text-purple-700 border-purple-100',
     'Finance': 'bg-primary/10 text-primary border-primary/20',
     'Project Management': 'bg-orange-50 text-orange-700 border-orange-100',

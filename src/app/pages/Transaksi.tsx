@@ -1,6 +1,6 @@
-import { ArrowRightLeft, Calendar, Edit2, FileCheck, FileText, Plus, Trash2, User, XCircle, XOctagon } from 'lucide-react';
-import React, { useState } from 'react';
-import { useAkad, useBAST, useConfirmDialog, usePembatalan, usePindahUnit, usePPJB } from '../../hooks';
+import { ArrowRightLeft, Calendar, Edit2, FileCheck, FileText, Plus, Search, Trash2, User, XCircle, XOctagon } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { useAkad, useBAST, useConfirmDialog, useHousingUnits, usePembatalan, usePindahUnit, usePPJB, useProjects } from '../../hooks';
 import { formatRupiah } from '../../lib/utils';
 import type { Akad, BAST, Pembatalan, PindahUnit, PPJB } from '../../types';
 
@@ -34,22 +34,88 @@ const labelCls = 'text-xs font-bold text-gray-400 uppercase tracking-widest';
 const emptyPPJB = { nomor_ppjb: '', consumer_id: '', housing_unit_id: '', tanggal_ppjb: '', harga_ppjb: '', status: 'Draft' as const, notes: '' };
 const emptyAkad = { nomor_akad: '', consumer_id: '', housing_unit_id: '', tanggal_akad: '', bank: '', notaris: '', status: 'Draft' as const, notes: '' };
 const emptyBAST = { nomor_bast: '', consumer_id: '', housing_unit_id: '', tanggal_bast: '', status: 'Draft' as const, notes: '' };
-const emptyPindah = { consumer_id: '', unit_lama: '', unit_baru: '', tanggal_pindah: '', alasan: '', selisih_harga: '', status: 'Proses' as const };
-const emptyPembatalan = { consumer_id: '', unit_code: '', tanggal_batal: '', alasan: '', refund_amount: '', status: 'Proses' as const };
+const emptyPindah = { consumer_id: '', housing_unit_id_lama: '', housing_unit_id_baru: '', tanggal_pindah: '', alasan: '', selisih_harga: '', status: 'Proses' as const };
+const emptyPembatalan = { consumer_id: '', housing_unit_id: '', tanggal_batal: '', alasan: '', refund_amount: '', status: 'Proses' as const };
+
+// ── Pagination bar (reusable) ─────────────────────────────────────
+function PaginationBar(
+  { page, totalPages, total, perPage, onPageChange, onPerPageChange }:
+  { page: number; totalPages: number; total: number; perPage: number; onPageChange: (p: number) => void; onPerPageChange: (n: number) => void }
+) {
+  if (totalPages <= 0) return null;
+  return (
+    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4 text-sm">
+      <div className="flex items-center gap-4">
+        <span className="text-gray-600 font-medium">Halaman {page} dari {totalPages} ({total} data)</span>
+        <select value={perPage} onChange={(e) => onPerPageChange(Number(e.target.value))} className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg font-medium text-gray-700 focus:ring-2 focus:ring-primary outline-none">
+          <option value={10}>10 per halaman</option>
+          <option value={20}>20 per halaman</option>
+          <option value={50}>50 per halaman</option>
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))} className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50">Sebelumnya</button>
+        <button type="button" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))} className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50">Selanjutnya</button>
+      </div>
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════════════
 export function Transaksi() {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
+  const { projects } = useProjects();
 
-  // Data & CRUD from hooks — NO local data arrays
-  const { ppjbList, isLoading: ppjbLoading, create: createPPJB, update: updatePPJB, remove: removePPJB } = usePPJB();
-  const { akadList, isLoading: akadLoading, create: createAkad, update: updateAkad, remove: removeAkad } = useAkad();
-  const { bastList, isLoading: bastLoading, create: createBAST, update: updateBAST, remove: removeBAST } = useBAST();
-  const { pindahList, isLoading: pindahLoading, create: createPindah, update: updatePindah, remove: removePindah } = usePindahUnit();
-  const { pembatalanList, isLoading: pembatalanLoading, create: createPembatalan, update: updatePembatalan, remove: removePembatalan } = usePembatalan();
+  // Per-tab list params (search, page, perPage)
+  const [ppjbSearch, setPpjbSearch] = useState('');
+  const [ppjbPage, setPpjbPage] = useState(1);
+  const [ppjbPerPage, setPpjbPerPage] = useState(10);
+  const ppjbParams = useMemo(() => ({ search: ppjbSearch || undefined, page: ppjbPage, limit: ppjbPerPage }), [ppjbSearch, ppjbPage, ppjbPerPage]);
+  const [akadSearch, setAkadSearch] = useState('');
+  const [akadPage, setAkadPage] = useState(1);
+  const [akadPerPage, setAkadPerPage] = useState(10);
+  const akadParams = useMemo(() => ({ search: akadSearch || undefined, page: akadPage, limit: akadPerPage }), [akadSearch, akadPage, akadPerPage]);
+  const [bastSearch, setBastSearch] = useState('');
+  const [bastPage, setBastPage] = useState(1);
+  const [bastPerPage, setBastPerPage] = useState(10);
+  const bastParams = useMemo(() => ({ search: bastSearch || undefined, page: bastPage, limit: bastPerPage }), [bastSearch, bastPage, bastPerPage]);
+  const [pindahSearch, setPindahSearch] = useState('');
+  const [pindahPage, setPindahPage] = useState(1);
+  const [pindahPerPage, setPindahPerPage] = useState(10);
+  const pindahParams = useMemo(() => ({ search: pindahSearch || undefined, page: pindahPage, limit: pindahPerPage }), [pindahSearch, pindahPage, pindahPerPage]);
+  const [pembatalanSearch, setPembatalanSearch] = useState('');
+  const [pembatalanPage, setPembatalanPage] = useState(1);
+  const [pembatalanPerPage, setPembatalanPerPage] = useState(10);
+  const pembatalanParams = useMemo(() => ({ search: pembatalanSearch || undefined, page: pembatalanPage, limit: pembatalanPerPage }), [pembatalanSearch, pembatalanPage, pembatalanPerPage]);
+
+  const { ppjbList, pagination: ppjbPagination, isLoading: ppjbLoading, create: createPPJB, update: updatePPJB, remove: removePPJB } = usePPJB(ppjbParams);
+  const { akadList, pagination: akadPagination, isLoading: akadLoading, create: createAkad, update: updateAkad, remove: removeAkad } = useAkad(akadParams);
+  const { bastList, pagination: bastPagination, isLoading: bastLoading, create: createBAST, update: updateBAST, remove: removeBAST } = useBAST(bastParams);
+  const { pindahList, pagination: pindahPagination, isLoading: pindahLoading, create: createPindah, update: updatePindah, remove: removePindah } = usePindahUnit(pindahParams);
+  const { pembatalanList, pagination: pembatalanPagination, isLoading: pembatalanLoading, create: createPembatalan, update: updatePembatalan, remove: removePembatalan } = usePembatalan(pembatalanParams);
 
   // UI-only state
   const [activeTab, setActiveTab] = useState<'ppjb' | 'akad' | 'bast' | 'pindah' | 'pembatalan'>('ppjb');
+
+  // Form unit selection: project + unit (per form)
+  const [ppjbProjectId, setPpjbProjectId] = useState('');
+  const [ppjbUnitId, setPpjbUnitId] = useState('');
+  const ppjbUnits = useHousingUnits(undefined, { limit: 500, project_id: ppjbProjectId || undefined });
+  const [akadProjectId, setAkadProjectId] = useState('');
+  const [akadUnitId, setAkadUnitId] = useState('');
+  const akadUnits = useHousingUnits(undefined, { limit: 500, project_id: akadProjectId || undefined });
+  const [bastProjectId, setBastProjectId] = useState('');
+  const [bastUnitId, setBastUnitId] = useState('');
+  const bastUnits = useHousingUnits(undefined, { limit: 500, project_id: bastProjectId || undefined });
+  const [pindahProjectLama, setPindahProjectLama] = useState('');
+  const [pindahUnitLama, setPindahUnitLama] = useState('');
+  const [pindahProjectBaru, setPindahProjectBaru] = useState('');
+  const [pindahUnitBaru, setPindahUnitBaru] = useState('');
+  const pindahUnitsLama = useHousingUnits(undefined, { limit: 500, project_id: pindahProjectLama || undefined });
+  const pindahUnitsBaru = useHousingUnits(undefined, { limit: 500, project_id: pindahProjectBaru || undefined });
+  const [pembatalanProjectId, setPembatalanProjectId] = useState('');
+  const [pembatalanUnitId, setPembatalanUnitId] = useState('');
+  const pembatalanUnits = useHousingUnits(undefined, { limit: 500, project_id: pembatalanProjectId || undefined });
 
   // PPJB modals
   const [isAddPPJBOpen, setIsAddPPJBOpen] = useState(false);
@@ -83,13 +149,14 @@ export function Transaksi() {
       await createPPJB({
         nomor_ppjb: newPPJB.nomor_ppjb,
         consumer_id: newPPJB.consumer_id || undefined,
-        housing_unit_id: newPPJB.housing_unit_id || undefined,
+        housing_unit_id: ppjbUnitId || undefined,
         tanggal_ppjb: newPPJB.tanggal_ppjb,
         harga_ppjb: newPPJB.harga_ppjb ? Number(newPPJB.harga_ppjb) : undefined,
         status: newPPJB.status,
         notes: newPPJB.notes || undefined,
       });
       setNewPPJB({ ...emptyPPJB });
+      setPpjbProjectId(''); setPpjbUnitId('');
       setIsAddPPJBOpen(false);
     } catch { /* hook shows toast */ }
   };
@@ -98,7 +165,7 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingPPJB?.id) return;
     try {
-      await updatePPJB(editingPPJB.id, editingPPJB);
+      await updatePPJB(editingPPJB.id, { ...editingPPJB, housing_unit_id: ppjbUnitId || undefined });
       setEditingPPJB(null);
     } catch { /* hook shows toast */ }
   };
@@ -116,7 +183,7 @@ export function Transaksi() {
       await createAkad({
         nomor_akad: newAkad.nomor_akad,
         consumer_id: newAkad.consumer_id || undefined,
-        housing_unit_id: newAkad.housing_unit_id || undefined,
+        housing_unit_id: akadUnitId || undefined,
         tanggal_akad: newAkad.tanggal_akad,
         bank: newAkad.bank || undefined,
         notaris: newAkad.notaris || undefined,
@@ -124,6 +191,7 @@ export function Transaksi() {
         notes: newAkad.notes || undefined,
       });
       setNewAkad({ ...emptyAkad });
+      setAkadProjectId(''); setAkadUnitId('');
       setIsAddAkadOpen(false);
     } catch { /* hook shows toast */ }
   };
@@ -132,7 +200,7 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingAkad?.id) return;
     try {
-      await updateAkad(editingAkad.id, editingAkad);
+      await updateAkad(editingAkad.id, { ...editingAkad, housing_unit_id: akadUnitId || undefined });
       setEditingAkad(null);
     } catch { /* hook shows toast */ }
   };
@@ -150,12 +218,13 @@ export function Transaksi() {
       await createBAST({
         nomor_bast: newBAST.nomor_bast,
         consumer_id: newBAST.consumer_id || undefined,
-        housing_unit_id: newBAST.housing_unit_id || undefined,
+        housing_unit_id: bastUnitId || undefined,
         tanggal_bast: newBAST.tanggal_bast,
         status: newBAST.status,
         notes: newBAST.notes || undefined,
       });
       setNewBAST({ ...emptyBAST });
+      setBastProjectId(''); setBastUnitId('');
       setIsAddBASTOpen(false);
     } catch { /* hook shows toast */ }
   };
@@ -164,7 +233,7 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingBAST?.id) return;
     try {
-      await updateBAST(editingBAST.id, editingBAST);
+      await updateBAST(editingBAST.id, { ...editingBAST, housing_unit_id: bastUnitId || undefined });
       setEditingBAST(null);
     } catch { /* hook shows toast */ }
   };
@@ -181,14 +250,15 @@ export function Transaksi() {
     try {
       await createPindah({
         consumer_id: newPindah.consumer_id || undefined,
-        unit_lama: newPindah.unit_lama,
-        unit_baru: newPindah.unit_baru,
+        housing_unit_id_lama: pindahUnitLama || undefined,
+        housing_unit_id_baru: pindahUnitBaru || undefined,
         tanggal_pindah: newPindah.tanggal_pindah,
         alasan: newPindah.alasan || undefined,
         selisih_harga: newPindah.selisih_harga ? Number(newPindah.selisih_harga) : undefined,
         status: newPindah.status,
       });
       setNewPindah({ ...emptyPindah });
+      setPindahProjectLama(''); setPindahUnitLama(''); setPindahProjectBaru(''); setPindahUnitBaru('');
       setIsAddPindahOpen(false);
     } catch { /* hook shows toast */ }
   };
@@ -197,7 +267,11 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingPindah?.id) return;
     try {
-      await updatePindah(editingPindah.id, editingPindah);
+      await updatePindah(editingPindah.id, {
+        ...editingPindah,
+        housing_unit_id_lama: pindahUnitLama || undefined,
+        housing_unit_id_baru: pindahUnitBaru || undefined,
+      });
       setEditingPindah(null);
     } catch { /* hook shows toast */ }
   };
@@ -214,13 +288,14 @@ export function Transaksi() {
     try {
       await createPembatalan({
         consumer_id: newPembatalan.consumer_id || undefined,
-        unit_code: newPembatalan.unit_code,
+        housing_unit_id: pembatalanUnitId || undefined,
         tanggal_batal: newPembatalan.tanggal_batal,
         alasan: newPembatalan.alasan,
         refund_amount: newPembatalan.refund_amount ? Number(newPembatalan.refund_amount) : undefined,
         status: newPembatalan.status,
       });
       setNewPembatalan({ ...emptyPembatalan });
+      setPembatalanProjectId(''); setPembatalanUnitId('');
       setIsAddPembatalanOpen(false);
     } catch { /* hook shows toast */ }
   };
@@ -229,7 +304,7 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingPembatalan?.id) return;
     try {
-      await updatePembatalan(editingPembatalan.id, editingPembatalan);
+      await updatePembatalan(editingPembatalan.id, { ...editingPembatalan, housing_unit_id: pembatalanUnitId || undefined });
       setEditingPembatalan(null);
     } catch { /* hook shows toast */ }
   };
@@ -282,14 +357,20 @@ export function Transaksi() {
           {/* ── PPJB Tab ─────────────────────────────────────────── */}
           {activeTab === 'ppjb' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="font-bold text-gray-900">Data PPJB</h2>
-                  <p className="text-xs text-gray-500 mt-1">Total {ppjbList.length} data PPJB</p>
+                  <p className="text-xs text-gray-500 mt-1">Total {ppjbPagination?.total ?? ppjbList.length} data PPJB</p>
                 </div>
-                <button onClick={() => setIsAddPPJBOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
-                  <Plus size={18} /> Tambah PPJB
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input type="text" placeholder="Cari nomor PPJB..." value={ppjbSearch} onChange={(e) => { setPpjbSearch(e.target.value); setPpjbPage(1); }} className="pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm w-64 focus:ring-2 focus:ring-primary outline-none" />
+                  </div>
+                  <button onClick={() => setIsAddPPJBOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
+                    <Plus size={18} /> Tambah PPJB
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -332,7 +413,7 @@ export function Transaksi() {
                           <td className="px-6 py-4"><StatusBadge status={item.status} /></td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingPPJB(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
+                              <button onClick={() => { setEditingPPJB(item); setPpjbProjectId(item.housingUnit?.project_id ?? ''); setPpjbUnitId(item.housing_unit_id ?? ''); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
                               <button onClick={() => handleDeletePPJB(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><Trash2 size={18} /></button>
                             </div>
                           </td>
@@ -349,6 +430,9 @@ export function Transaksi() {
                     </div>
                   )}
                 </div>
+                {ppjbPagination && ppjbPagination.total_pages > 0 && (
+                  <PaginationBar page={ppjbPagination.page} totalPages={ppjbPagination.total_pages} total={ppjbPagination.total} perPage={ppjbPerPage} onPageChange={setPpjbPage} onPerPageChange={(n) => { setPpjbPerPage(n); setPpjbPage(1); }} />
+                )}
               </div>
             </div>
           )}
@@ -356,14 +440,20 @@ export function Transaksi() {
           {/* ── Akad Tab ─────────────────────────────────────────── */}
           {activeTab === 'akad' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="font-bold text-gray-900">Data Akad</h2>
-                  <p className="text-xs text-gray-500 mt-1">Total {akadList.length} data akad</p>
+                  <p className="text-xs text-gray-500 mt-1">Total {akadPagination?.total ?? akadList.length} data akad</p>
                 </div>
-                <button onClick={() => setIsAddAkadOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
-                  <Plus size={18} /> Tambah Akad
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input type="text" placeholder="Cari nomor akad..." value={akadSearch} onChange={(e) => { setAkadSearch(e.target.value); setAkadPage(1); }} className="pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm w-64 focus:ring-2 focus:ring-primary outline-none" />
+                  </div>
+                  <button onClick={() => setIsAddAkadOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
+                    <Plus size={18} /> Tambah Akad
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -408,7 +498,7 @@ export function Transaksi() {
                           <td className="px-6 py-4"><StatusBadge status={item.status} /></td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingAkad(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
+                              <button onClick={() => { setEditingAkad(item); setAkadProjectId(item.housingUnit?.project_id ?? ''); setAkadUnitId(item.housing_unit_id ?? ''); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
                               <button onClick={() => handleDeleteAkad(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><Trash2 size={18} /></button>
                             </div>
                           </td>
@@ -424,6 +514,9 @@ export function Transaksi() {
                     </div>
                   )}
                 </div>
+                {akadPagination && akadPagination.total_pages > 0 && (
+                  <PaginationBar page={akadPagination.page} totalPages={akadPagination.total_pages} total={akadPagination.total} perPage={akadPerPage} onPageChange={setAkadPage} onPerPageChange={(n) => { setAkadPerPage(n); setAkadPage(1); }} />
+                )}
               </div>
             </div>
           )}
@@ -431,14 +524,20 @@ export function Transaksi() {
           {/* ── BAST Tab ─────────────────────────────────────────── */}
           {activeTab === 'bast' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="font-bold text-gray-900">Berita Acara Serah Terima (BAST)</h2>
-                  <p className="text-xs text-gray-500 mt-1">Total {bastList.length} data BAST</p>
+                  <p className="text-xs text-gray-500 mt-1">Total {bastPagination?.total ?? bastList.length} data BAST</p>
                 </div>
-                <button onClick={() => setIsAddBASTOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
-                  <Plus size={18} /> Tambah BAST
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input type="text" placeholder="Cari nomor BAST..." value={bastSearch} onChange={(e) => { setBastSearch(e.target.value); setBastPage(1); }} className="pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm w-64 focus:ring-2 focus:ring-primary outline-none" />
+                  </div>
+                  <button onClick={() => setIsAddBASTOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
+                    <Plus size={18} /> Tambah BAST
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -479,7 +578,7 @@ export function Transaksi() {
                           <td className="px-6 py-4"><StatusBadge status={item.status} /></td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingBAST(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
+                              <button onClick={() => { setEditingBAST(item); setBastProjectId(item.housingUnit?.project_id ?? ''); setBastUnitId(item.housing_unit_id ?? ''); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
                               <button onClick={() => handleDeleteBAST(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><Trash2 size={18} /></button>
                             </div>
                           </td>
@@ -495,6 +594,9 @@ export function Transaksi() {
                     </div>
                   )}
                 </div>
+                {bastPagination && bastPagination.total_pages > 0 && (
+                  <PaginationBar page={bastPagination.page} totalPages={bastPagination.total_pages} total={bastPagination.total} perPage={bastPerPage} onPageChange={setBastPage} onPerPageChange={(n) => { setBastPerPage(n); setBastPage(1); }} />
+                )}
               </div>
             </div>
           )}
@@ -502,14 +604,20 @@ export function Transaksi() {
           {/* ── Pindah Unit Tab ──────────────────────────────────── */}
           {activeTab === 'pindah' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="font-bold text-gray-900">Data Pindah Unit</h2>
-                  <p className="text-xs text-gray-500 mt-1">Total {pindahList.length} data pindah unit</p>
+                  <p className="text-xs text-gray-500 mt-1">Total {pindahPagination?.total ?? pindahList.length} data pindah unit</p>
                 </div>
-                <button onClick={() => setIsAddPindahOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
-                  <Plus size={18} /> Tambah Pindah Unit
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input type="text" placeholder="Cari unit lama/baru..." value={pindahSearch} onChange={(e) => { setPindahSearch(e.target.value); setPindahPage(1); }} className="pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm w-64 focus:ring-2 focus:ring-primary outline-none" />
+                  </div>
+                  <button onClick={() => setIsAddPindahOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
+                    <Plus size={18} /> Tambah Pindah Unit
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -535,8 +643,8 @@ export function Transaksi() {
                               <span className="font-bold text-gray-900">{item.consumer?.name || '-'}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-600">{item.unit_lama || '-'}</td>
-                          <td className="px-6 py-4 text-sm font-bold text-gray-900">{item.unit_baru || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{item.housingUnitLama?.unit_code ?? item.unit_lama ?? '-'}</td>
+                          <td className="px-6 py-4 text-sm font-bold text-gray-900">{item.housingUnitBaru?.unit_code ?? item.unit_baru ?? '-'}</td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
                               <Calendar size={14} className="text-gray-400" />
@@ -547,7 +655,7 @@ export function Transaksi() {
                           <td className="px-6 py-4"><StatusBadge status={item.status} /></td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingPindah(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
+                              <button onClick={() => { setEditingPindah(item); setPindahProjectLama(item.housingUnitLama?.project_id ?? ''); setPindahUnitLama(item.housing_unit_id_lama ?? ''); setPindahProjectBaru(item.housingUnitBaru?.project_id ?? ''); setPindahUnitBaru(item.housing_unit_id_baru ?? ''); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
                               <button onClick={() => handleDeletePindah(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><Trash2 size={18} /></button>
                             </div>
                           </td>
@@ -563,6 +671,9 @@ export function Transaksi() {
                     </div>
                   )}
                 </div>
+                {pindahPagination && pindahPagination.total_pages > 0 && (
+                  <PaginationBar page={pindahPagination.page} totalPages={pindahPagination.total_pages} total={pindahPagination.total} perPage={pindahPerPage} onPageChange={setPindahPage} onPerPageChange={(n) => { setPindahPerPage(n); setPindahPage(1); }} />
+                )}
               </div>
             </div>
           )}
@@ -570,14 +681,20 @@ export function Transaksi() {
           {/* ── Pembatalan Tab ───────────────────────────────────── */}
           {activeTab === 'pembatalan' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="font-bold text-gray-900">Data Pembatalan</h2>
-                  <p className="text-xs text-gray-500 mt-1">Total {pembatalanList.length} data pembatalan</p>
+                  <p className="text-xs text-gray-500 mt-1">Total {pembatalanPagination?.total ?? pembatalanList.length} data pembatalan</p>
                 </div>
-                <button onClick={() => setIsAddPembatalanOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
-                  <Plus size={18} /> Tambah Pembatalan
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input type="text" placeholder="Cari unit..." value={pembatalanSearch} onChange={(e) => { setPembatalanSearch(e.target.value); setPembatalanPage(1); }} className="pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm w-64 focus:ring-2 focus:ring-primary outline-none" />
+                  </div>
+                  <button onClick={() => setIsAddPembatalanOpen(true)} className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 text-sm">
+                    <Plus size={18} /> Tambah Pembatalan
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -603,7 +720,7 @@ export function Transaksi() {
                               <span className="font-bold text-gray-900">{item.consumer?.name || '-'}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-600">{item.unit_code || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{item.housingUnit?.unit_code ?? item.unit_code ?? '-'}</td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
                               <Calendar size={14} className="text-gray-400" />
@@ -615,7 +732,7 @@ export function Transaksi() {
                           <td className="px-6 py-4"><StatusBadge status={item.status} /></td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingPembatalan(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
+                              <button onClick={() => { setEditingPembatalan(item); setPembatalanProjectId(item.housingUnit?.project_id ?? ''); setPembatalanUnitId(item.housing_unit_id ?? ''); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit2 size={18} /></button>
                               <button onClick={() => handleDeletePembatalan(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><Trash2 size={18} /></button>
                             </div>
                           </td>
@@ -631,6 +748,9 @@ export function Transaksi() {
                     </div>
                   )}
                 </div>
+                {pembatalanPagination && pembatalanPagination.total_pages > 0 && (
+                  <PaginationBar page={pembatalanPagination.page} totalPages={pembatalanPagination.total_pages} total={pembatalanPagination.total} perPage={pembatalanPerPage} onPageChange={setPembatalanPage} onPerPageChange={(n) => { setPembatalanPerPage(n); setPembatalanPage(1); }} />
+                )}
               </div>
             </div>
           )}
@@ -653,12 +773,21 @@ export function Transaksi() {
                 <input required type="date" value={newPPJB.tanggal_ppjb} onChange={(e) => setNewPPJB({ ...newPPJB, tanggal_ppjb: e.target.value })} className={inputCls} />
               </Field>
             </div>
+            <Field label="Consumer ID">
+              <input value={newPPJB.consumer_id} onChange={(e) => setNewPPJB({ ...newPPJB, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={newPPJB.consumer_id} onChange={(e) => setNewPPJB({ ...newPPJB, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+              <Field label="Proyek">
+                <select value={ppjbProjectId} onChange={(e) => { setPpjbProjectId(e.target.value); setPpjbUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Housing Unit ID">
-                <input value={newPPJB.housing_unit_id} onChange={(e) => setNewPPJB({ ...newPPJB, housing_unit_id: e.target.value })} className={inputCls} placeholder="ID unit" />
+              <Field label="Unit">
+                <select value={ppjbUnitId} onChange={(e) => setPpjbUnitId(e.target.value)} disabled={!ppjbProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {ppjbUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -693,12 +822,21 @@ export function Transaksi() {
                 <input required type="date" value={editingPPJB.tanggal_ppjb ?? ''} onChange={(e) => setEditingPPJB({ ...editingPPJB, tanggal_ppjb: e.target.value })} className={inputCls} />
               </Field>
             </div>
+            <Field label="Consumer ID">
+              <input value={editingPPJB.consumer_id ?? ''} onChange={(e) => setEditingPPJB({ ...editingPPJB, consumer_id: e.target.value })} className={inputCls} />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={editingPPJB.consumer_id ?? ''} onChange={(e) => setEditingPPJB({ ...editingPPJB, consumer_id: e.target.value })} className={inputCls} />
+              <Field label="Proyek">
+                <select value={ppjbProjectId} onChange={(e) => { setPpjbProjectId(e.target.value); setPpjbUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Housing Unit ID">
-                <input value={editingPPJB.housing_unit_id ?? ''} onChange={(e) => setEditingPPJB({ ...editingPPJB, housing_unit_id: e.target.value })} className={inputCls} />
+              <Field label="Unit">
+                <select value={ppjbUnitId} onChange={(e) => setPpjbUnitId(e.target.value)} disabled={!ppjbProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {ppjbUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -733,12 +871,21 @@ export function Transaksi() {
                 <input required type="date" value={newAkad.tanggal_akad} onChange={(e) => setNewAkad({ ...newAkad, tanggal_akad: e.target.value })} className={inputCls} />
               </Field>
             </div>
+            <Field label="Consumer ID">
+              <input value={newAkad.consumer_id} onChange={(e) => setNewAkad({ ...newAkad, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={newAkad.consumer_id} onChange={(e) => setNewAkad({ ...newAkad, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+              <Field label="Proyek">
+                <select value={akadProjectId} onChange={(e) => { setAkadProjectId(e.target.value); setAkadUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Housing Unit ID">
-                <input value={newAkad.housing_unit_id} onChange={(e) => setNewAkad({ ...newAkad, housing_unit_id: e.target.value })} className={inputCls} placeholder="ID unit" />
+              <Field label="Unit">
+                <select value={akadUnitId} onChange={(e) => setAkadUnitId(e.target.value)} disabled={!akadProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {akadUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -776,12 +923,21 @@ export function Transaksi() {
                 <input required type="date" value={editingAkad.tanggal_akad ?? ''} onChange={(e) => setEditingAkad({ ...editingAkad, tanggal_akad: e.target.value })} className={inputCls} />
               </Field>
             </div>
+            <Field label="Consumer ID">
+              <input value={editingAkad.consumer_id ?? ''} onChange={(e) => setEditingAkad({ ...editingAkad, consumer_id: e.target.value })} className={inputCls} />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={editingAkad.consumer_id ?? ''} onChange={(e) => setEditingAkad({ ...editingAkad, consumer_id: e.target.value })} className={inputCls} />
+              <Field label="Proyek">
+                <select value={akadProjectId} onChange={(e) => { setAkadProjectId(e.target.value); setAkadUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Housing Unit ID">
-                <input value={editingAkad.housing_unit_id ?? ''} onChange={(e) => setEditingAkad({ ...editingAkad, housing_unit_id: e.target.value })} className={inputCls} />
+              <Field label="Unit">
+                <select value={akadUnitId} onChange={(e) => setAkadUnitId(e.target.value)} disabled={!akadProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {akadUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -819,12 +975,21 @@ export function Transaksi() {
                 <input required type="date" value={newBAST.tanggal_bast} onChange={(e) => setNewBAST({ ...newBAST, tanggal_bast: e.target.value })} className={inputCls} />
               </Field>
             </div>
+            <Field label="Consumer ID">
+              <input value={newBAST.consumer_id} onChange={(e) => setNewBAST({ ...newBAST, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={newBAST.consumer_id} onChange={(e) => setNewBAST({ ...newBAST, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+              <Field label="Proyek">
+                <select value={bastProjectId} onChange={(e) => { setBastProjectId(e.target.value); setBastUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Housing Unit ID">
-                <input value={newBAST.housing_unit_id} onChange={(e) => setNewBAST({ ...newBAST, housing_unit_id: e.target.value })} className={inputCls} placeholder="ID unit" />
+              <Field label="Unit">
+                <select value={bastUnitId} onChange={(e) => setBastUnitId(e.target.value)} disabled={!bastProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {bastUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <Field label="Status">
@@ -854,12 +1019,21 @@ export function Transaksi() {
                 <input required type="date" value={editingBAST.tanggal_bast ?? ''} onChange={(e) => setEditingBAST({ ...editingBAST, tanggal_bast: e.target.value })} className={inputCls} />
               </Field>
             </div>
+            <Field label="Consumer ID">
+              <input value={editingBAST.consumer_id ?? ''} onChange={(e) => setEditingBAST({ ...editingBAST, consumer_id: e.target.value })} className={inputCls} />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={editingBAST.consumer_id ?? ''} onChange={(e) => setEditingBAST({ ...editingBAST, consumer_id: e.target.value })} className={inputCls} />
+              <Field label="Proyek">
+                <select value={bastProjectId} onChange={(e) => { setBastProjectId(e.target.value); setBastUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Housing Unit ID">
-                <input value={editingBAST.housing_unit_id ?? ''} onChange={(e) => setEditingBAST({ ...editingBAST, housing_unit_id: e.target.value })} className={inputCls} />
+              <Field label="Unit">
+                <select value={bastUnitId} onChange={(e) => setBastUnitId(e.target.value)} disabled={!bastProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {bastUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <Field label="Status">
@@ -885,11 +1059,31 @@ export function Transaksi() {
               <input value={newPindah.consumer_id} onChange={(e) => setNewPindah({ ...newPindah, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
             </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Unit Lama" required>
-                <input required value={newPindah.unit_lama} onChange={(e) => setNewPindah({ ...newPindah, unit_lama: e.target.value })} className={inputCls} placeholder="Kode unit lama" />
+              <Field label="Proyek (Unit Lama)">
+                <select value={pindahProjectLama} onChange={(e) => { setPindahProjectLama(e.target.value); setPindahUnitLama(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Unit Baru" required>
-                <input required value={newPindah.unit_baru} onChange={(e) => setNewPindah({ ...newPindah, unit_baru: e.target.value })} className={inputCls} placeholder="Kode unit baru" />
+              <Field label="Unit Lama">
+                <select value={pindahUnitLama} onChange={(e) => setPindahUnitLama(e.target.value)} disabled={!pindahProjectLama} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {pindahUnitsLama.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Proyek (Unit Baru)">
+                <select value={pindahProjectBaru} onChange={(e) => { setPindahProjectBaru(e.target.value); setPindahUnitBaru(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Unit Baru">
+                <select value={pindahUnitBaru} onChange={(e) => setPindahUnitBaru(e.target.value)} disabled={!pindahProjectBaru} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {pindahUnitsBaru.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -923,11 +1117,31 @@ export function Transaksi() {
               <input value={editingPindah.consumer_id ?? ''} onChange={(e) => setEditingPindah({ ...editingPindah, consumer_id: e.target.value })} className={inputCls} />
             </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Unit Lama" required>
-                <input required value={editingPindah.unit_lama ?? ''} onChange={(e) => setEditingPindah({ ...editingPindah, unit_lama: e.target.value })} className={inputCls} />
+              <Field label="Proyek (Unit Lama)">
+                <select value={pindahProjectLama} onChange={(e) => { setPindahProjectLama(e.target.value); setPindahUnitLama(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Unit Baru" required>
-                <input required value={editingPindah.unit_baru ?? ''} onChange={(e) => setEditingPindah({ ...editingPindah, unit_baru: e.target.value })} className={inputCls} />
+              <Field label="Unit Lama">
+                <select value={pindahUnitLama} onChange={(e) => setPindahUnitLama(e.target.value)} disabled={!pindahProjectLama} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {pindahUnitsLama.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Proyek (Unit Baru)">
+                <select value={pindahProjectBaru} onChange={(e) => { setPindahProjectBaru(e.target.value); setPindahUnitBaru(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Unit Baru">
+                <select value={pindahUnitBaru} onChange={(e) => setPindahUnitBaru(e.target.value)} disabled={!pindahProjectBaru} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {pindahUnitsBaru.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -957,12 +1171,21 @@ export function Transaksi() {
       {isAddPembatalanOpen && (
         <ModalWrapper title="Tambah Pembatalan" onClose={() => setIsAddPembatalanOpen(false)}>
           <form onSubmit={handleAddPembatalan} className="p-6 space-y-4">
+            <Field label="Consumer ID">
+              <input value={newPembatalan.consumer_id} onChange={(e) => setNewPembatalan({ ...newPembatalan, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={newPembatalan.consumer_id} onChange={(e) => setNewPembatalan({ ...newPembatalan, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+              <Field label="Proyek">
+                <select value={pembatalanProjectId} onChange={(e) => { setPembatalanProjectId(e.target.value); setPembatalanUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Unit Code" required>
-                <input required value={newPembatalan.unit_code} onChange={(e) => setNewPembatalan({ ...newPembatalan, unit_code: e.target.value })} className={inputCls} placeholder="Kode unit" />
+              <Field label="Unit">
+                <select value={pembatalanUnitId} onChange={(e) => setPembatalanUnitId(e.target.value)} disabled={!pembatalanProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {pembatalanUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -991,12 +1214,21 @@ export function Transaksi() {
       {editingPembatalan && (
         <ModalWrapper title="Edit Pembatalan" onClose={() => setEditingPembatalan(null)}>
           <form onSubmit={handleUpdatePembatalan} className="p-6 space-y-4">
+            <Field label="Consumer ID">
+              <input value={editingPembatalan.consumer_id ?? ''} onChange={(e) => setEditingPembatalan({ ...editingPembatalan, consumer_id: e.target.value })} className={inputCls} />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Consumer ID">
-                <input value={editingPembatalan.consumer_id ?? ''} onChange={(e) => setEditingPembatalan({ ...editingPembatalan, consumer_id: e.target.value })} className={inputCls} />
+              <Field label="Proyek">
+                <select value={pembatalanProjectId} onChange={(e) => { setPembatalanProjectId(e.target.value); setPembatalanUnitId(''); }} className={inputCls}>
+                  <option value="">Pilih Proyek...</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </Field>
-              <Field label="Unit Code" required>
-                <input required value={editingPembatalan.unit_code ?? ''} onChange={(e) => setEditingPembatalan({ ...editingPembatalan, unit_code: e.target.value })} className={inputCls} />
+              <Field label="Unit">
+                <select value={pembatalanUnitId} onChange={(e) => setPembatalanUnitId(e.target.value)} disabled={!pembatalanProjectId} className={inputCls}>
+                  <option value="">Pilih Unit...</option>
+                  {pembatalanUnits.units.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                </select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">

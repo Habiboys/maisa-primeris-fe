@@ -8,8 +8,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { USE_MOCK_DATA } from '../lib/config';
-import { MOCK } from '../lib/mockData';
 import { getErrorMessage } from '../lib/utils';
 import {
     dashboardService,
@@ -29,20 +27,6 @@ export function useDashboard() {
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchAll = useCallback(async () => {
-    // ── Mode Mock ────────────────────────────────────────────
-    if (USE_MOCK_DATA) {
-      setSummary({
-        total_unit: MOCK.dashboardKpi.totalUnit,
-        unit_terjual: MOCK.dashboardKpi.unitTerjual,
-        unit_progres: MOCK.dashboardKpi.unitProgres,
-        pendapatan: MOCK.dashboardKpi.pendapatan,
-      } as DashboardSummary);
-      setCashflow(MOCK.cashflowData as CashflowPoint[]);
-      setConstructionProgress(MOCK.constructionProgress as ConstructionProgressItem[]);
-      setSalesDistribution(MOCK.salesStatus as SalesDistributionItem[]);
-      setBudgetVsActual(MOCK.budgetVsActualData as BudgetVsActualItem[]);
-      return;
-    }
     setIsLoading(true);
     try {
       // Fetch semua data dashboard sekaligus — gunakan allSettled agar

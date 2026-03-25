@@ -103,6 +103,20 @@ export function cleanParams(params: Record<string, unknown>): Record<string, str
   ) as Record<string, string | number | boolean>;
 }
 
+// ── Resolve URL aset backend ───────────────────────────────
+/**
+ * Ubah path relatif backend (mis. /uploads/logo.png) jadi URL absolut.
+ */
+export function resolveAssetUrl(assetPath?: string | null): string | null {
+  if (!assetPath) return null;
+  if (/^https?:\/\//i.test(assetPath)) return assetPath;
+
+  const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
+  const origin = new URL(apiBase).origin;
+  const normalized = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+  return `${origin}${normalized}`;
+}
+
 // ── Konstanta Warna Status ───────────────────────────────────
 export const STATUS_COLOR: Record<string, string> = {
   // QC

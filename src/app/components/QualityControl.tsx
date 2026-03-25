@@ -181,8 +181,6 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
     if (initialTemplateId) {
       const target = resolveTemplate(initialTemplateId);
       if (target) setSelectedTemplateId(target.id);
-    } else if (templates.length > 0) {
-      setSelectedTemplateId(templates[0].id);
     }
   }, [initialTemplateId, resolveTemplate, selectedTemplateId, templates, templatesLoading]);
 
