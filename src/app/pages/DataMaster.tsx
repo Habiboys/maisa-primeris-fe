@@ -14,7 +14,7 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useHousingUnits, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
-import { formatRupiah, resolveAssetUrl } from '../../lib/utils';
+import { formatRupiah } from '../../lib/utils';
 import { housingService } from '../../services';
 import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit } from '../../types';
 
@@ -1270,7 +1270,7 @@ export function DataMaster() {
               {editingKavling?.photo_url && !kavlingPhotoFile && (
                 <div className="w-28 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
                   <img
-                    src={resolveAssetUrl(editingKavling.photo_url) ?? editingKavling.photo_url}
+                    src={`${import.meta.env.VITE_ASSET_URL ?? ''}${editingKavling.photo_url}`}
                     alt={`Foto unit ${editingKavling.unit_code}`}
                     className="w-full h-full object-cover"
                   />

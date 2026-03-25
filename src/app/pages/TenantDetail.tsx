@@ -15,7 +15,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth, useCompanies, useCompany, useCompanyBranding, useUsers } from '../../hooks';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { getErrorMessage } from '../../lib/utils';
-import { resolveAssetUrl } from '../../lib/utils';
 import type { CompanyPayload, CreateUserPayload } from '../../types';
 import type { CompanySettingsPayload } from '../../types';
 import type { UserRole } from '../../types';
@@ -285,7 +284,11 @@ export function TenantDetail() {
     }
   };
 
-  const logoDisplayUrl = logoPreview ?? (settings?.logo_url ? resolveAssetUrl(settings.logo_url) : null);
+  const logoDisplayUrl =
+    logoPreview ??
+    (settings?.logo_url
+      ? `${import.meta.env.VITE_ASSET_URL ?? ''}${settings.logo_url}`
+      : null);
 
   if (!isNew && !company && !loadingCompany) {
     return (

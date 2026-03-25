@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useConfirmDialog, useHousingUnits, usePaymentHistory, useProjects, useProjectUnits } from "../../hooks";
 import { housingService } from "../../services/housing.service";
-import { formatRupiah, resolveAssetUrl } from "../../lib/utils";
+import { formatRupiah } from "../../lib/utils";
 import type { CreateHousingUnitPayload, HousingUnit, HousingUnitStatus, Project } from "../../types";
 
 function getProjectName(projects: Project[] | undefined, projectId: string | undefined): string {
@@ -1031,7 +1031,7 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
                   {selectedUnit.photo_url ? (
                     <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
                       <img
-                        src={resolveAssetUrl(selectedUnit.photo_url) ?? selectedUnit.photo_url}
+                        src={`${import.meta.env.VITE_ASSET_URL ?? ''}${selectedUnit.photo_url}`}
                         alt={`Unit ${selectedUnit.unit_code}`}
                         className="w-full h-64 object-cover"
                       />

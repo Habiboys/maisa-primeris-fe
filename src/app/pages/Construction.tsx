@@ -29,7 +29,7 @@ import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, X
 import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useProjects, useQCTemplates } from '../../hooks';
 import { type ConstructionStatus, type InventoryLog, type Project, type ProjectUnit, type WorkLog } from '../../lib/mockConstruction';
-import { compressImageToFile, resolveAssetUrl } from '../../lib/utils';
+import { compressImageToFile } from '../../lib/utils';
 import { projectService } from '../../services';
 import type { ConstructionStatus as ApiCS, Project as ApiProject, ProjectUnit as ApiProjectUnit } from '../../types';
 import { QCTemplateManager } from '../components/QCTemplateManager';
@@ -682,7 +682,7 @@ export function Construction() {
         progressAdded: wl.progress_added ?? 0,
         status: (wl.status as WorkLog['status']) ?? 'Normal',
         weather: wl.weather as WorkLog['weather'],
-        photos: (wl.photos?.map((p: any) => resolveAssetUrl(p.photo_url) ?? p.photo_url) ?? []).filter(Boolean),
+        photos: (wl.photos?.map((p: any) => `${import.meta.env.VITE_ASSET_URL ?? ''}${p.photo_url}`) ?? []).filter(Boolean),
       }));
 
       // Map API inventory logs → UI inventory (grouped by unit_no)
@@ -727,7 +727,7 @@ export function Construction() {
         progressAdded: wl.progress_added ?? 0,
         status: (wl.status as WorkLog['status']) ?? 'Normal',
         weather: wl.weather as WorkLog['weather'],
-        photos: (wl.photos?.map((p: any) => resolveAssetUrl(p.photo_url) ?? p.photo_url) ?? []).filter(Boolean),
+        photos: (wl.photos?.map((p: any) => `${import.meta.env.VITE_ASSET_URL ?? ''}${p.photo_url}`) ?? []).filter(Boolean),
       }));
 
       const uiInventory: { [unitNo: string]: InventoryLog[] } = {};

@@ -26,7 +26,6 @@ import { Toaster } from 'sonner';
 import logoMini from "../assets/61cebe8f7139be169da0e497fe1e0c50a3adec15.png";
 import logoMain from "../assets/c1369a79bc00e989fba6fc14517246c6364e83d7.png";
 import { useAuth } from '../context/AuthContext';
-import { resolveAssetUrl } from '../lib/utils';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { Absensi } from './pages/Absensi';
 import { Construction as ConstructionModule } from './pages/Construction';
@@ -228,10 +227,11 @@ export default function App() {
   let logoMiniUrl = logoMini;
   if (user?.role !== 'Platform Owner' && user?.company?.settings) {
     appName = user.company.settings.app_name || 'Primeris One';
-    const tenantLogo = resolveAssetUrl(user.company.settings.logo_url);
-    if (tenantLogo) {
-      logoUrl = tenantLogo;
-      logoMiniUrl = tenantLogo;
+    const tenantLogoPath = user.company.settings.logo_url;
+    if (tenantLogoPath) {
+      const tenantLogoUrl = `${import.meta.env.VITE_ASSET_URL ?? ''}${tenantLogoPath}`;
+      logoUrl = tenantLogoUrl;
+      logoMiniUrl = tenantLogoUrl;
     }
   }
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
