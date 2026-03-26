@@ -25,6 +25,8 @@ export interface HousingUnit {
   harga_jual?: number;
   daya_listrik?: number;
   consumer_id?: string;
+  /** Lead yang mengunci unit (booking/reserved). Null jika Tersedia. */
+  reserved_lead_id?: string | null;
   status: HousingUnitStatus;
   akad_date?: string;
   serah_terima_date?: string;

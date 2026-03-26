@@ -22,6 +22,7 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirmDialog, useQCSubmissions, useQCTemplates } from '../../hooks';
+import { formatDateTimeId } from '../../lib/date';
 import { compressImage } from '../../lib/utils';
 import { qcService } from '../../services';
 import type { QcSubmission, QcSubmissionInput, QcTemplate } from '../../types';
@@ -32,6 +33,8 @@ type ChecklistItemState = {
   result: 'OK' | 'Not OK' | null;
   photo: string | null;
   notes: string;
+  // Waktu terakhir item ini diperbarui (berasal dari `updated_at`/`created_at` hasil QC)
+  lastUpdate: string | null;
 };
 
 type ChecklistSectionState = {
@@ -116,6 +119,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
           result: res?.result ?? null,
           notes: res?.notes ?? null,
           photo_url: res?.photo_url ?? null,
+          lastUpdate: (res?.updated_at ?? res?.created_at) ?? null,
         };
       });
       return { id: section.id, name: section.name, items };
@@ -134,6 +138,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
         result: res.result ?? null,
         notes: res.notes ?? null,
         photo_url: res.photo_url ?? null,
+        lastUpdate: (res.updated_at ?? res.created_at) ?? null,
       });
       return acc;
     }, {});
@@ -160,6 +165,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
         result: null,
         photo: null,
         notes: '',
+        lastUpdate: null,
       })),
     }));
   };
@@ -170,6 +176,8 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
         ...prev,
         project: initialProject || prev.project,
         unit: initialUnit || prev.unit,
+      // tanggal inspeksi otomatis (tidak perlu input manual)
+      date: new Date().toISOString().split('T')[0],
       }));
       if (initialUnit) setIsInspecting(true);
     }
@@ -229,6 +237,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
             result: (res.result as 'OK' | 'Not OK' | null) ?? null,
             notes: res.notes ?? '',
             photo: res.photo_url ?? null,
+            lastUpdate: (res.updated_at ?? res.created_at) ?? null,
           };
         }),
       })));
@@ -249,7 +258,15 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
       if (section.id !== sectionId) return section;
       return {
         ...section,
-        items: section.items.map(item => (item.id === itemId ? { ...item, [field]: value } : item)),
+        items: section.items.map(item => {
+          if (item.id !== itemId) return item;
+          const next: ChecklistItemState = { ...item, [field]: value } as ChecklistItemState;
+          // saat item diubah (hasil/foto/catatan), update lastUpdate optimis di UI
+          if (field === 'result' || field === 'photo' || field === 'notes') {
+            next.lastUpdate = new Date().toISOString();
+          }
+          return next;
+        }),
       };
     }));
   };
@@ -375,18 +392,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
 
         <div className="flex-1 overflow-y-auto bg-gray-50/50 px-4 py-6 md:px-8">
           <div className="max-w-5xl mx-auto space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
-                  <Calendar size={12} /> Tanggal Inspeksi
-                </label>
-                <input 
-                  type="date" 
-                  value={headerData.date}
-                  onChange={(e) => setHeaderData({...headerData, date: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" 
-                />
-              </div>
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
                   <UserIcon size={12} /> Petugas QC
@@ -440,6 +446,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                             <th className="px-4 py-3 text-center w-32">Kualitas</th>
                             <th className="px-4 py-3 text-center w-24">Foto</th>
                             <th className="px-4 py-3 min-w-[200px]">Keterangan</th>
+                            <th className="px-4 py-3 min-w-[180px] text-center">Last Update</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
@@ -506,6 +513,13 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                                     item.result === 'Not OK' && !item.notes ? 'border-red-200' : 'border-gray-200'
                                   }`}
                                 />
+                              </td>
+                              <td className="px-4 py-4 text-center text-xs text-gray-500 whitespace-nowrap">
+                                {(() => {
+                                  if (!item.lastUpdate) return <span className="text-gray-400">—</span>;
+                                  const s = formatDateTimeId(item.lastUpdate);
+                                  return s === '-' ? <span className="text-gray-400">—</span> : s;
+                                })()}
                               </td>
                             </tr>
                           ))}

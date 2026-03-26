@@ -9,6 +9,7 @@ export type UserStatus = 'Aktif' | 'Nonaktif';
 export interface CompanyBranding {
   app_name: string;
   logo_url?: string | null;
+  favicon_url?: string | null;
   primary_color: string;
   secondary_color: string;
   accent_color: string;

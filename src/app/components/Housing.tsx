@@ -47,7 +47,7 @@ function StatusBadge({ status }: { status: HousingUnitStatus }) {
 }
 
 // ─── Payment History Tab: terhubung ke Piutang (Finance) ──────────
-function PaymentHistoryTab({ unit, onNavigateToFinance }: { unit: HousingUnit; onNavigateToFinance: (opts: { detailConsumerId?: string; openReceivable?: boolean; unitId?: string; unitCode?: string; totalPrice?: number }) => void }) {
+function PaymentHistoryTab({ unit, onNavigateToFinance }: { unit: HousingUnit; onNavigateToFinance: (opts: { detailConsumerId?: string; goMarketingForLead?: boolean }) => void }) {
   const consumerId = unit.consumer_id ?? (unit.consumer as { id?: string } | undefined)?.id ?? "";
   const hasConsumer = !!consumerId;
   const { payments, isLoading } = usePaymentHistory(consumerId);
@@ -66,10 +66,12 @@ function PaymentHistoryTab({ unit, onNavigateToFinance }: { unit: HousingUnit; o
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
           <Wallet className="w-10 h-10 mx-auto mb-3 text-amber-600 opacity-80" />
           <p className="text-sm font-bold text-amber-800">Belum ada piutang untuk unit ini</p>
-          <p className="text-xs text-amber-700 mt-1">Tambah piutang di modul Finance dengan memilih unit kavling ini.</p>
+          <p className="text-xs text-amber-700 mt-1">
+            Piutang hanya boleh dari lead Deal. Buat atau lengkapi lead untuk unit ini di Marketing, setujui menjadi Deal, lalu tambah piutang dari aksi lead.
+          </p>
           <button
             type="button"
-            onClick={() => onNavigateToFinance({ openReceivable: true, unitId: unit.id, unitCode: unit.unit_code, totalPrice: unit.harga_jual })}
+            onClick={() => onNavigateToFinance({ goMarketingForLead: true })}
             className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 shadow-lg shadow-primary/20"
           >
             <Plus className="w-4 h-4" />
@@ -1322,15 +1324,21 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
               {drawerTab === "history" && (
                 <PaymentHistoryTab
                   unit={selectedUnit}
-                  onNavigateToFinance={({ detailConsumerId, openReceivable, unitId, unitCode, totalPrice }) => {
+                  onNavigateToFinance={({ detailConsumerId, goMarketingForLead }) => {
                     setSelectedUnit(null);
-                    navigate("/finance", {
-                      state: detailConsumerId
-                        ? { openDetailId: detailConsumerId }
-                        : openReceivable
-                          ? { openReceivable: true, preselectedUnitId: unitId, preselectedUnitCode: unitCode, preselectedTotalPrice: totalPrice }
-                          : {},
-                    });
+                    if (detailConsumerId) {
+                      navigate("/finance", { state: { openDetailId: detailConsumerId } });
+                    } else if (goMarketingForLead) {
+                      navigate("/marketing", {
+                        state: {
+                          focusLeadsTab: true,
+                          openLeadFormForUnit: {
+                            projectId: selectedUnit.project_id,
+                            unitId: selectedUnit.id,
+                          },
+                        },
+                      });
+                    }
                   }}
                 />
               )}

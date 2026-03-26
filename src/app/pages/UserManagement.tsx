@@ -278,20 +278,40 @@ export function UserManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {activityLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-gray-500 whitespace-nowrap">{log.time}</td>
-                    <td className="px-6 py-4 font-bold text-gray-900">{log.user}</td>
-                    <td className="px-6 py-4">
-                      <span className="px-2 py-1 bg-primary/10 text-primary rounded text-xs font-medium">
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700 font-medium">{log.target}</td>
-                    <td className="px-6 py-4 text-gray-500 font-mono text-xs">{log.ip}</td>
-                    <td className="px-6 py-4 text-gray-400 text-xs">{log.device}</td>
-                  </tr>
-                ))}
+                {activityLogs.map((log) => {
+                  const l = log as any;
+                  // Backend mengirim `user` sebagai object (join dari tabel users),
+                  // sedangkan UI lama menganggap string + field berbeda.
+                  const time = l.time ?? l.created_at ?? '-';
+                  const userDisplay =
+                    typeof l.user === 'string'
+                      ? l.user
+                      : l.user?.name ?? l.user_name ?? l.user_id ?? '-';
+                  const action = l.action ?? l.entity ?? '-';
+                  const target =
+                    l.target ??
+                    l.entity ??
+                    l.entity_name ??
+                    l.description ??
+                    '-';
+                  const ip = l.ip ?? l.ip_address ?? '-';
+                  const device = l.device ?? l.device_info ?? '-';
+
+                  return (
+                    <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-gray-500 whitespace-nowrap">{time}</td>
+                      <td className="px-6 py-4 font-bold text-gray-900">{userDisplay}</td>
+                      <td className="px-6 py-4">
+                        <span className="px-2 py-1 bg-primary/10 text-primary rounded text-xs font-medium">
+                          {action}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-700 font-medium">{target}</td>
+                      <td className="px-6 py-4 text-gray-500 font-mono text-xs">{ip}</td>
+                      <td className="px-6 py-4 text-gray-400 text-xs">{device}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

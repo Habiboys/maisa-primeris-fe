@@ -130,12 +130,12 @@ export function useCompanyBranding(options?: { companyId?: string; enabled?: boo
     fetchSettings();
   }, [fetchSettings]);
 
-  const update = async (payload: CompanySettingsPayload, logo?: File | null) => {
+  const update = async (payload: CompanySettingsPayload, logo?: File | null, favicon?: File | null) => {
     try {
       const data = logo
         ? companyId
-          ? await companyService.updateSettingsByCompanyWithLogo(companyId, payload, logo)
-          : await companyService.updateMySettingsWithLogo(payload, logo)
+          ? await companyService.updateSettingsByCompanyWithLogo(companyId, payload, logo, favicon)
+          : await companyService.updateMySettingsWithLogo(payload, logo, favicon)
         : companyId
           ? await companyService.updateSettingsByCompany(companyId, payload)
           : await companyService.updateMySettings(payload);

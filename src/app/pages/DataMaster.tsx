@@ -14,41 +14,12 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useHousingUnits, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
+import { formatDateId } from '../../lib/date';
 import { formatRupiah } from '../../lib/utils';
 import { housingService } from '../../services';
 import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit } from '../../types';
-
-/* ──────────────────────────────────────────────────────────────
- *  Modal Component
- * ────────────────────────────────────────────────────────────── */
-function Modal({
-  isOpen,
-  onClose,
-  title,
-  children,
-  wide,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-  wide?: boolean;
-}) {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className={`bg-white rounded-2xl w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} shadow-2xl overflow-hidden text-left max-h-[90vh] overflow-y-auto`}>
-        <div className="p-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
-          <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
+import { Modal } from '../components/ui/Modal';
+import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
 
 /* ──────────────────────────────────────────────────────────────
  *  Main DataMaster Component
@@ -113,6 +84,7 @@ export function DataMaster() {
     location: '',
     units_count: 0,
     unit_prefix: '',
+    budget_cap: 0,
     deadline: '',
     status: 'On Progress' as ProjectStatus,
   });
@@ -233,6 +205,7 @@ export function DataMaster() {
       location: '',
       units_count: 0,
       unit_prefix: '',
+      budget_cap: 0,
       deadline: '',
       status: 'On Progress',
     });
@@ -247,6 +220,7 @@ export function DataMaster() {
       location: p.location ?? '',
       units_count: p.units_count ?? 0,
       unit_prefix: '',
+      budget_cap: p.budget_cap ?? 0,
       deadline: toDateInputValue(p.deadline),
       status: p.status,
     });
@@ -266,6 +240,7 @@ export function DataMaster() {
           location: projectForm.location || null,
           deadline: projectForm.deadline || null,
           status: projectForm.status,
+          budget_cap: projectForm.budget_cap ?? 0,
         } as Partial<Project>);
       } else {
         if (projectForm.units_count > 0 && !projectForm.unit_prefix) {
@@ -280,6 +255,7 @@ export function DataMaster() {
           unit_prefix: projectForm.unit_prefix || undefined,
           deadline: projectForm.deadline || null,
           status: projectForm.status,
+          budget_cap: projectForm.budget_cap ?? 0,
         } as Partial<Project>);
         setSelectedProjectId(created.id);
       }
@@ -625,11 +601,8 @@ export function DataMaster() {
                       <div className="text-lg font-bold text-gray-900">{progress}%</div>
                       <div className="text-[10px] font-bold text-gray-500 uppercase">Progress</div>
                     </div>
-                    <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
-                      <div className={`text-xs font-bold px-2 py-1 rounded-lg inline-block ${p.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                          p.status === 'Delayed' ? 'bg-red-100 text-red-700' :
-                            'bg-yellow-100 text-yellow-700'
-                        }`}>{p.status}</div>
+                    <div className="bg-gray-50 rounded-lg px-3 py-2 text-center flex items-center justify-center">
+                      <ProjectStatusBadge status={p.status} />
                     </div>
                   </div>
 
@@ -715,7 +688,9 @@ export function DataMaster() {
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="text-xs font-bold text-gray-400 uppercase">Deadline</div>
-              <div className="mt-1 text-sm font-bold text-gray-900">{selectedProject?.deadline || '—'}</div>
+              <div className="mt-1 text-sm font-bold text-gray-900">
+                {selectedProject?.deadline ? formatDateId(selectedProject.deadline) : '—'}
+              </div>
             </div>
           </div>
 
@@ -1013,6 +988,18 @@ export function DataMaster() {
               onChange={(e) => setProjectForm({ ...projectForm, deadline: e.target.value })}
               className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
                   placeholder="YYYY-MM-DD"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">Pagu Biaya (IDR)</label>
+            <input
+              type="number"
+              min={0}
+              value={projectForm.budget_cap}
+              onChange={(e) => setProjectForm({ ...projectForm, budget_cap: Number(e.target.value) })}
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="contoh: 500000000"
             />
           </div>
 

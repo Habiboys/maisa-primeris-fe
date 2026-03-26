@@ -1,50 +1,41 @@
 import {
     ArrowDownRight,
     ArrowUpRight,
-    CheckCircle,
-    ChevronDown,
     Edit2,
     FileSpreadsheet,
     FileText,
     Plus,
     Trash2,
-    User,
     Wallet,
     X
 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useConfirmDialog, useConsumers, useHousingUnits, useTransactions } from '../../hooks';
+import { useConfirmDialog, useConsumers, useTransactions } from '../../hooks';
 import { formatRupiah, getErrorMessage } from '../../lib/utils';
 import { financeService } from '../../services';
-import type { CreateConsumerPayload, CreateTransactionPayload } from '../../types';
+import { marketingService } from '../../services/marketing.service';
+import type { CreateConsumerPayload, CreateTransactionPayload, Lead } from '../../types';
 import { FinanceDetail } from '../components/FinanceDetail';
 import { FinanceMonitoring } from '../components/FinanceMonitoring';
 import { FinanceTablePagination, FinanceTableToolbar, SortableHeader } from '../components/FinanceTableControls';
 
 export function Finance() {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
-  const [activeTab, setActiveTab] = useState<'in' | 'out' | 'receivables' | 'monitoring'>('monitoring');
+  const [activeTab, setActiveTab] = useState<'in' | 'out' | 'monitoring'>('monitoring');
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [receivableStatusFilter, setReceivableStatusFilter] = useState<'all' | 'lunas' | 'belum'>('all');
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [modalType, setModalType] = useState<'income' | 'expense' | 'receivable'>('income');
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortIn, setSortIn] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'tanggal', direction: 'desc' });
   const [sortOut, setSortOut] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'tanggal', direction: 'desc' });
-  const [sortReceivable, setSortReceivable] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [exporting, setExporting] = useState(false);
-  const [receivableSelectedUnitId, setReceivableSelectedUnitId] = useState<string | null>(null);
-  const [receivableUnitCode, setReceivableUnitCode] = useState('');
-  const [receivableTotalPrice, setReceivableTotalPrice] = useState<number>(0);
   /** Modal Tambah Transaksi (pembayaran piutang) dari dropdown piutang */
   const [addTransactionConsumerId, setAddTransactionConsumerId] = useState<string | null>(null);
-  const [addTransactionConsumerName, setAddTransactionConsumerName] = useState('');
   const CATEGORY_OPTIONS = ['Booking Fee', 'Angsuran', 'Pelunasan', 'Refund', 'Lainnya'] as const;
   const [addTransactionForm, setAddTransactionForm] = useState({
     payment_date: '',
@@ -60,48 +51,78 @@ export function Finance() {
   const [addTransactionSubmitting, setAddTransactionSubmitting] = useState(false);
   const [editingPayment, setEditingPayment] = useState<{ consumerId: string; consumerName: string; payment: any } | null>(null);
 
+  /** Piutang dari lead Deal: isian form + dropdown */
+  const [dealLeadsForFinance, setDealLeadsForFinance] = useState<Lead[]>([]);
+  const [receivableLinkedLeadId, setReceivableLinkedLeadId] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { units: housingUnits } = useHousingUnits(undefined, { limit: 500 });
-  const selectedHousingUnit = useMemo(() => housingUnits.find((u: { id: string }) => u.id === receivableSelectedUnitId), [housingUnits, receivableSelectedUnitId]);
 
-  // Dari Housing: buka detail piutang atau modal tambah piutang dengan unit terpilih
+  // Dari modul lain: buka detail piutang atau modal tambah piutang dengan lead terpilih
   useEffect(() => {
-    const state = location.state as { openDetailId?: string; openReceivable?: boolean; preselectedUnitId?: string; preselectedUnitCode?: string; preselectedTotalPrice?: number } | null;
+    const state = location.state as {
+      openDetailId?: string;
+      prefilledLeadId?: string;
+    } | null;
     if (!state) return;
     if (state.openDetailId) {
       setSelectedDetailId(state.openDetailId);
-      setActiveTab('receivables');
+      setActiveTab('monitoring');
       navigate(location.pathname, { replace: true, state: {} });
-    } else if (state.openReceivable) {
-      setActiveTab('receivables');
-      setReceivableSelectedUnitId(state.preselectedUnitId ?? null);
-      setReceivableUnitCode(state.preselectedUnitCode ?? '');
-      setReceivableTotalPrice(state.preselectedTotalPrice ?? 0);
-      setShowModal(true);
-      setModalType('receivable');
-      setEditingItem(null);
+    } else if (state.prefilledLeadId) {
+      setActiveTab('monitoring');
       navigate(location.pathname, { replace: true, state: {} });
+      void (async () => {
+        try {
+          const lead = await marketingService.getLeadById(state.prefilledLeadId!);
+          if (lead.status !== 'Deal' || lead.consumer_id) {
+            toast.error('Lead ini tidak bisa dipakai untuk piutang (bukan Deal atau sudah punya piutang).');
+            return;
+          }
+          if (!lead.housing_unit_id) {
+            toast.error('Lead Deal harus memiliki unit kavling sebelum membuat piutang.');
+            return;
+          }
+          setReceivableLinkedLeadId(lead.id);
+          setDealLeadsForFinance((prev) => (prev.some((l) => l.id === lead.id) ? prev : [lead, ...prev]));
+          setShowModal(true);
+          setModalType('receivable');
+          setEditingItem(null);
+        } catch {
+          toast.error('Gagal memuat data lead.');
+        }
+      })();
     }
   }, [location.state, location.pathname, navigate]);
 
-  // Saat pilih unit kavling dari dropdown, isi unit_code & total_price
   useEffect(() => {
-    if (selectedHousingUnit && !editingItem) {
-      setReceivableUnitCode(selectedHousingUnit.unit_code ?? '');
-      setReceivableTotalPrice(selectedHousingUnit.harga_jual ?? 0);
-    }
-  }, [selectedHousingUnit?.id, editingItem]);
+    if (!showModal || modalType !== 'receivable' || editingItem) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await marketingService.getLeads({
+          status: 'Deal',
+          unconverted_finance: true,
+          limit: 200,
+          page: 1,
+        });
+        if (!cancelled) setDealLeadsForFinance(res.data ?? []);
+      } catch {
+        if (!cancelled) setDealLeadsForFinance([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showModal, modalType, editingItem]);
 
-  const toggleRow = (id: string) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
-    setExpandedRows(newExpanded);
+  const applyLeadToReceivableForm = (leadId: string | null) => {
+    setReceivableLinkedLeadId(leadId || null);
   };
+
+  const selectedDealLead = useMemo(() => {
+    if (!receivableLinkedLeadId) return null;
+    return dealLeadsForFinance.find((l) => l.id === receivableLinkedLeadId) ?? null;
+  }, [dealLeadsForFinance, receivableLinkedLeadId]);
 
   // ── Hooks ──────────────────────────────────────────────
   const {
@@ -112,7 +133,7 @@ export function Finance() {
   const {
     consumers,
     refetch: refetchConsumers,
-    create: createConsumer, update: updateConsumer, remove: removeConsumer,
+    create: createConsumer,
   } = useConsumers();
 
   // ── Derived data ──────────────────────────────────────────
@@ -139,17 +160,6 @@ export function Finance() {
     }));
 
   const piutangList = consumers;
-
-  const piutangRows = useMemo(() => piutangList.map((c: any) => {
-    const sisaPiutang = Math.max((c.total_price ?? 0) - (c.paid_amount ?? 0), 0);
-    const statusLunas = c.status === 'Lunas' || sisaPiutang <= 0;
-    return {
-      ...c,
-      sisaPiutang,
-      statusLunas,
-      payments: c.payments || [],
-    };
-  }), [piutangList]);
 
   const compareValues = (a: unknown, b: unknown, direction: 'asc' | 'desc') => {
     const order = direction === 'asc' ? 1 : -1;
@@ -206,28 +216,6 @@ export function Finance() {
     });
   }, [danaKeluar, searchQuery, sortOut]);
 
-  const filteredPiutang = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    const bySearch = q
-      ? piutangRows.filter((item) =>
-          String(item.name ?? '').toLowerCase().includes(q)
-          || String(item.unit_code ?? '').toLowerCase().includes(q)
-          || String(item.payment_scheme ?? '').toLowerCase().includes(q),
-        )
-      : piutangRows;
-
-    const byStatus = receivableStatusFilter === 'all'
-      ? bySearch
-      : bySearch.filter((item) => (receivableStatusFilter === 'lunas' ? item.statusLunas : !item.statusLunas));
-
-    return applySort(byStatus, sortReceivable, {
-      name: (item) => item.name,
-      total_price: (item) => item.total_price,
-      sisa: (item) => item.sisaPiutang,
-      status: (item) => (item.statusLunas ? 'Lunas' : 'Belum Lunas'),
-    });
-  }, [piutangRows, searchQuery, receivableStatusFilter, sortReceivable]);
-
   const pagedDanaMasuk = useMemo(
     () => filteredDanaMasuk.slice((currentPage - 1) * perPage, currentPage * perPage),
     [filteredDanaMasuk, currentPage, perPage],
@@ -236,24 +224,17 @@ export function Finance() {
     () => filteredDanaKeluar.slice((currentPage - 1) * perPage, currentPage * perPage),
     [filteredDanaKeluar, currentPage, perPage],
   );
-  const pagedPiutang = useMemo(
-    () => filteredPiutang.slice((currentPage - 1) * perPage, currentPage * perPage),
-    [filteredPiutang, currentPage, perPage],
-  );
-
   const totalRowsByTab = activeTab === 'in'
     ? filteredDanaMasuk.length
     : activeTab === 'out'
       ? filteredDanaKeluar.length
-      : activeTab === 'receivables'
-        ? filteredPiutang.length
-        : 0;
+      : 0;
 
   const totalPages = Math.max(1, Math.ceil(totalRowsByTab / perPage));
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchQuery, perPage, receivableStatusFilter]);
+  }, [activeTab, searchQuery, perPage]);
 
   const toggleSort = (
     setter: React.Dispatch<React.SetStateAction<{ key: string; direction: 'asc' | 'desc' }>>,
@@ -273,41 +254,41 @@ export function Finance() {
   }, 0);
 
   // ── Event handlers ──────────────────────────────────────
-  const handleEditConsumer = (consumer: any) => {
+  const openAddReceivableModal = () => {
     setModalType('receivable');
-    setEditingItem(consumer);
+    setEditingItem(null);
+    setReceivableLinkedLeadId(null);
     setShowModal(true);
   };
 
-  const handleDeleteConsumer = async (id: string) => {
-    if (!await showConfirm({ title: 'Hapus Konsumen', description: 'Hapus data konsumen ini dan seluruh riwayat transaksinya?' })) return;
-    try {
-      await removeConsumer(id);
-    } catch { /* error handled in hook */ }
-  };
-
   const handleExport = async () => {
-    if (activeTab === 'monitoring') {
-      toast.info('Pilih tab Dana Masuk, Dana Keluar, atau Piutang untuk export.');
-      return;
-    }
-
     try {
       setExporting(true);
 
-      const blob = activeTab === 'receivables'
-        ? await financeService.exportConsumers({ search: searchQuery || undefined })
-        : await financeService.exportTransactions({
-            type: activeTab === 'in' ? 'Pemasukan' : 'Pengeluaran',
-            search: searchQuery || undefined,
-          });
-
       const now = new Date().toISOString().slice(0, 10);
-      const filename = activeTab === 'in'
-        ? `laporan-dana-masuk-${now}.csv`
-        : activeTab === 'out'
-          ? `laporan-dana-keluar-${now}.csv`
-          : `laporan-piutang-${now}.csv`;
+      let blob: Blob;
+      let filename: string;
+      let label: string;
+
+      if (activeTab === 'monitoring') {
+        blob = await financeService.exportConsumers({ search: searchQuery || undefined });
+        filename = `laporan-piutang-${now}.csv`;
+        label = 'Piutang (Monitoring)';
+      } else if (activeTab === 'in') {
+        blob = await financeService.exportTransactions({
+          type: 'Pemasukan',
+          search: searchQuery || undefined,
+        });
+        filename = `laporan-dana-masuk-${now}.csv`;
+        label = 'Dana Masuk';
+      } else {
+        blob = await financeService.exportTransactions({
+          type: 'Pengeluaran',
+          search: searchQuery || undefined,
+        });
+        filename = `laporan-dana-keluar-${now}.csv`;
+        label = 'Dana Keluar';
+      }
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -318,7 +299,7 @@ export function Finance() {
       a.remove();
       URL.revokeObjectURL(url);
 
-      toast.success(`Laporan ${activeTab === 'in' ? 'Dana Masuk' : activeTab === 'out' ? 'Dana Keluar' : 'Piutang'} berhasil diekspor.`);
+      toast.success(`Laporan ${label} berhasil diekspor.`);
     } catch {
       toast.error('Gagal export laporan. Coba lagi.');
     } finally {
@@ -331,25 +312,20 @@ export function Finance() {
     const formData = new FormData(e.currentTarget as HTMLFormElement);
 
     if (modalType === 'receivable') {
+      if (!receivableLinkedLeadId) {
+        toast.error('Pilih lead Deal yang akan dijadikan piutang.');
+        return;
+      }
       const payload: CreateConsumerPayload = {
-        name: formData.get('name') as string,
-        unit_code: (formData.get('unit_code') as string) || receivableUnitCode,
-        total_price: Number(formData.get('total_price')) || receivableTotalPrice,
+        lead_id: receivableLinkedLeadId,
         payment_scheme: formData.get('payment_scheme') as string,
         nik: (formData.get('nik') as string) || undefined,
-        phone: (formData.get('phone') as string) || undefined,
-        housing_unit_id: editingItem ? undefined : (receivableSelectedUnitId || undefined),
+        address: (formData.get('address') as string) || undefined,
       };
 
       try {
-        if (editingItem?.id) {
-          await updateConsumer(editingItem.id, payload);
-        } else {
-          await createConsumer(payload);
-        }
-        setReceivableSelectedUnitId(null);
-        setReceivableUnitCode('');
-        setReceivableTotalPrice(0);
+        await createConsumer(payload);
+        setReceivableLinkedLeadId(null);
       } catch { /* error handled in hook */ }
     } else if (modalType === 'income') {
       const payload: CreateTransactionPayload = {
@@ -415,7 +391,6 @@ export function Finance() {
         notes: addTransactionForm.notes || undefined,
         payment_method: addTransactionForm.payment_method || undefined,
       };
-      const consumerId = editingPayment?.consumerId ?? addTransactionConsumerId;
       if (editingPayment) {
         await financeService.updatePayment(consumerId, editingPayment.payment.id, payload);
         toast.success('Riwayat transaksi berhasil diperbarui');
@@ -522,13 +497,6 @@ export function Finance() {
           {activeTab === 'out' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary"></div>}
         </button>
         <button 
-          onClick={() => setActiveTab('receivables')}
-          className={`px-6 py-3 font-bold text-sm transition-all relative ${activeTab === 'receivables' ? 'text-primary' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          Piutang
-          {activeTab === 'receivables' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary"></div>}
-        </button>
-        <button 
           onClick={() => setActiveTab('monitoring')}
           className={`px-6 py-3 font-bold text-sm transition-all relative ${activeTab === 'monitoring' ? 'text-primary' : 'text-gray-500 hover:text-gray-700'}`}
         >
@@ -541,7 +509,7 @@ export function Finance() {
         <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h3 className="font-bold flex items-center gap-2">
             <FileText size={18} className="text-primary" />
-            {activeTab === 'in' ? 'Laporan Dana Masuk' : activeTab === 'out' ? 'Laporan Dana Keluar' : activeTab === 'receivables' ? 'Data Piutang Konsumen' : 'Tabel Monitoring Keuangan'}
+            {activeTab === 'in' ? 'Laporan Dana Masuk' : activeTab === 'out' ? 'Laporan Dana Keluar' : 'Tabel Monitoring Keuangan'}
           </h3>
         </div>
 
@@ -551,23 +519,12 @@ export function Finance() {
             onSearchChange={setSearchQuery}
             perPage={perPage}
             onPerPageChange={setPerPage}
-            addLabel={`Tambah ${activeTab === 'in' ? 'Dana Masuk' : activeTab === 'out' ? 'Dana Keluar' : 'Piutang'}`}
+            addLabel={`Tambah ${activeTab === 'in' ? 'Dana Masuk' : 'Dana Keluar'}`}
             onAdd={() => {
-              setModalType(activeTab === 'in' ? 'income' : activeTab === 'out' ? 'expense' : 'receivable');
+              setModalType(activeTab === 'in' ? 'income' : 'expense');
               setEditingItem(null);
               setShowModal(true);
             }}
-            extraFilters={activeTab === 'receivables' ? (
-              <select
-                value={receivableStatusFilter}
-                onChange={(e) => setReceivableStatusFilter(e.target.value as 'all' | 'lunas' | 'belum')}
-                className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
-              >
-                <option value="all">Semua Status</option>
-                <option value="lunas">Lunas</option>
-                <option value="belum">Belum Lunas</option>
-              </select>
-            ) : undefined}
           />
         )}
 
@@ -674,290 +631,9 @@ export function Finance() {
             </table>
           )}
 
-          {activeTab === 'receivables' && (
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                  <th className="px-4 py-4 w-8"></th>
-                  <SortableHeader label="Konsumen" sortKey="name" activeSort={sortReceivable} onSort={(key) => toggleSort(setSortReceivable, key)} />
-                  <SortableHeader label="Harga Rumah" sortKey="total_price" align="right" activeSort={sortReceivable} onSort={(key) => toggleSort(setSortReceivable, key)} />
-                  <SortableHeader label="Sisa Piutang" sortKey="sisa" align="right" activeSort={sortReceivable} onSort={(key) => toggleSort(setSortReceivable, key)} />
-                  <SortableHeader label="Status" sortKey="status" activeSort={sortReceivable} onSort={(key) => toggleSort(setSortReceivable, key)} />
-                  <th className="px-4 py-4 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredPiutang.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="px-6 py-16 text-center">
-                      <User size={64} className="mx-auto text-gray-300 mb-4" />
-                      <h3 className="font-bold text-gray-900 mb-2">Belum Ada Data Piutang</h3>
-                      <p className="text-gray-500 mb-6">Tambahkan konsumen untuk mulai tracking piutang</p>
-                      <button 
-                        onClick={() => {
-                          setModalType('receivable');
-                          setEditingItem(null);
-                          setShowModal(true);
-                        }}
-                        className="bg-primary text-white px-6 py-3 rounded-xl font-bold hover:bg-primary/90 transition-all inline-flex items-center gap-2"
-                      >
-                        <Plus size={20} />
-                        Tambah Konsumen Pertama
-                      </button>
-                    </td>
-                  </tr>
-                ) : (
-                  pagedPiutang.flatMap((consumer: any) => {
-                    const isExpanded = expandedRows.has(consumer.id);
-                    const sisaPiutang = consumer.sisaPiutang;
-                    const statusLunas = consumer.statusLunas;
-                    const payments = consumer.payments || [];
-                    
-                    const rows: React.ReactNode[] = [];
-                    
-                    // Main Consumer Row
-                    rows.push(
-                      <tr key={`${consumer.id}-main`} className="hover:bg-gray-50 transition-colors group">
-                          <td className="px-4 py-4">
-                            <button
-                              onClick={() => toggleRow(consumer.id)}
-                              className="p-1 hover:bg-gray-200 rounded transition-all"
-                            >
-                              <ChevronDown 
-                                size={18} 
-                                className={`text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                              />
-                            </button>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                                <User size={18} className="text-primary" />
-                              </div>
-                              <div>
-                                <div className="font-bold text-gray-900">{consumer.name}</div>
-                                <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
-                                  <span className="font-bold text-primary">{consumer.unit_code || '-'}</span>
-                                  <span>•</span>
-                                  <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">{consumer.payment_scheme || '-'}</span>
-                                  <span>•</span>
-                                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold">{payments.length} transaksi</span>
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            <span className="font-bold text-gray-900 text-sm">
-                              {formatRupiah(consumer.total_price ?? 0)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            <span className={`font-bold text-sm ${statusLunas ? 'text-green-600' : 'text-orange-600'}`}>
-                              {formatRupiah(Math.max(sisaPiutang, 0))}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
-                            {statusLunas ? (
-                              <span className="bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1">
-                                <CheckCircle size={14} />
-                                LUNAS
-                              </span>
-                            ) : (
-                              <span className="bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg text-xs font-bold">
-                                BELUM LUNAS
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button 
-                                onClick={() => setSelectedDetailId(consumer.id)}
-                                className="p-2 text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
-                                title="Lihat Detail"
-                              >
-                                <FileText size={16} />
-                              </button>
-                              <button 
-                                onClick={() => handleEditConsumer(consumer)}
-                                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                                title="Edit Konsumen"
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteConsumer(consumer.id)}
-                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Hapus Konsumen"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                    );
-                    
-                    // Expanded Payment Details
-                    if (isExpanded) {
-                      rows.push(
-                        <tr key={`${consumer.id}-detail`}>
-                            <td colSpan={10} className="bg-gray-50/50 px-4 py-4 border-t border-gray-200">
-                              <div className="ml-14">
-                                <div className="flex items-center justify-between mb-3">
-                                  <h4 className="font-bold text-sm text-gray-700 flex items-center gap-2">
-                                    <FileText size={16} className="text-primary" />
-                                    Riwayat Transaksi Pembayaran
-                                  </h4>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingPayment(null);
-                                      setAddTransactionConsumerId(consumer.id);
-                                      setAddTransactionConsumerName(consumer.name ?? '');
-                                      setAddTransactionForm({
-                                        payment_date: new Date().toISOString().slice(0, 10),
-                                        transaction_name: '',
-                                        category: '',
-                                        categoryLainnya: '',
-                                        debit: '',
-                                        credit: '',
-                                        estimasi_date: '',
-                                        notes: '',
-                                        payment_method: '',
-                                      });
-                                    }}
-                                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary/90 transition shadow-lg shadow-primary/20"
-                                  >
-                                    <Plus size={16} />
-                                    Tambah Transaksi
-                                  </button>
-                                </div>
-                                
-                                {payments.length === 0 ? (
-                                  <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
-                                    <FileText size={32} className="mx-auto text-gray-300 mb-2" />
-                                    <p className="text-sm text-gray-500">Belum ada riwayat pembayaran</p>
-                                  </div>
-                                ) : (
-                                  (() => {
-                                    const totalPrice = consumer.total_price ?? 0;
-                                    const asc = [...payments].sort((a: any, b: any) => (a.payment_date || '').localeCompare(b.payment_date || ''));
-                                    let running = totalPrice;
-                                    const sisaAfter: Record<string, number> = {};
-                                    asc.forEach((p: any) => {
-                                      const net = (p.debit ?? p.amount ?? 0) - (p.credit ?? 0);
-                                      running -= net;
-                                      sisaAfter[p.id] = running;
-                                    });
-                                    const formatDdMmYyyy = (d: string) => {
-                                      if (!d) return '-';
-                                      const [y, m, day] = d.split('-');
-                                      return day && m && y ? `${day}/${m}/${y}` : d;
-                                    };
-                                    return (
-                                      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-                                        <table className="w-full text-left text-sm">
-                                          <thead>
-                                            <tr className="bg-gray-100 text-gray-600 text-[10px] font-bold uppercase">
-                                              <th className="px-3 py-2.5 w-8">#</th>
-                                              <th className="px-3 py-2.5 whitespace-nowrap">Tanggal</th>
-                                              <th className="px-3 py-2.5">Nama Transaksi</th>
-                                              <th className="px-3 py-2.5 whitespace-nowrap">Kategori Transaksi</th>
-                                              <th className="px-3 py-2.5 text-right">Pembayaran</th>
-                                              <th className="px-3 py-2.5 text-right">Pengembalian</th>
-                                              <th className="px-3 py-2.5 text-right">Sisa Piutang</th>
-                                              <th className="px-3 py-2.5 whitespace-nowrap">Estimasi</th>
-                                              <th className="px-3 py-2.5">Status</th>
-                                              <th className="px-3 py-2.5 w-20 text-center">Aksi</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody className="divide-y divide-gray-100">
-                                            {asc.map((p: any, idx: number) => (
-                                              <tr key={p.id || idx} className="hover:bg-gray-50 transition-colors">
-                                                <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-                                                <td className="px-3 py-2.5 text-gray-600 text-xs whitespace-nowrap">{formatDdMmYyyy(p.payment_date)}</td>
-                                                <td className="px-3 py-2.5 font-medium text-gray-900">{p.transaction_name || p.notes || '-'}</td>
-                                                <td className="px-3 py-2.5 whitespace-nowrap">
-                                                  <span className={`text-xs font-bold px-2 py-0.5 rounded ${(p.transaction_category || ((p.debit ?? 0) > 0 ? 'Debit' : 'Kredit')) === 'Debit' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                    {p.transaction_category || ((p.debit ?? 0) > 0 ? 'Debit' : 'Kredit')}
-                                                  </span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right font-medium text-green-600 whitespace-nowrap">
-                                                  {(p.debit ?? 0) > 0 ? formatRupiah(p.debit) : '-'}
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right font-medium text-red-600 whitespace-nowrap">
-                                                  {(p.credit ?? 0) > 0 ? formatRupiah(p.credit) : '-'}
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right font-bold text-gray-900 whitespace-nowrap">
-                                                  {formatRupiah(sisaAfter[p.id] ?? 0)}
-                                                </td>
-                                                <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{p.estimasi_date ? formatDdMmYyyy(p.estimasi_date) : '-'}</td>
-                                                <td className="px-3 py-2.5 text-gray-600 text-xs">{p.status || '-'}</td>
-                                                <td className="px-3 py-2.5 text-center">
-                                                  <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => {
-                                                        const cat = p.category || '';
-                                                        const isLainnya = cat && !['Booking Fee', 'Angsuran', 'Pelunasan', 'Refund'].includes(cat);
-                                                        setEditingPayment({ consumerId: consumer.id, consumerName: consumer.name ?? '', payment: p });
-                                                        setAddTransactionForm({
-                                                          payment_date: (p.payment_date || '').toString().slice(0, 10),
-                                                          transaction_name: p.transaction_name || p.notes || '',
-                                                          category: isLainnya ? 'Lainnya' : (cat || ''),
-                                                          categoryLainnya: isLainnya ? cat : '',
-                                                          debit: p.debit != null ? String(p.debit) : '',
-                                                          credit: p.credit != null ? String(p.credit) : '',
-                                                          estimasi_date: (p.estimasi_date || '').toString().slice(0, 10),
-                                                          notes: p.notes || '',
-                                                          payment_method: p.payment_method || '',
-                                                        });
-                                                      }}
-                                                      className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded"
-                                                      title="Edit"
-                                                    >
-                                                      <Edit2 size={14} />
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      onClick={async () => {
-                                                        if (!await showConfirm({ title: 'Hapus Transaksi', description: 'Hapus riwayat transaksi ini?' })) return;
-                                                        try {
-                                                          await financeService.removePayment(consumer.id, p.id);
-                                                          toast.success('Transaksi dihapus');
-                                                          await refetchConsumers();
-                                                        } catch (err) {
-                                                          toast.error(getErrorMessage(err));
-                                                        }
-                                                      }}
-                                                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-                                                      title="Hapus"
-                                                    >
-                                                      <Trash2 size={14} />
-                                                    </button>
-                                                  </div>
-                                                </td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    );
-                                  })()
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                      );
-                    }
-                    
-                    return rows;
-                  })
-                )}
-              </tbody>
-            </table>
+          {activeTab === 'monitoring' && (
+            <FinanceMonitoring onDetail={setSelectedDetailId} onAddConsumer={openAddReceivableModal} />
           )}
-
-          {activeTab === 'monitoring' && <FinanceMonitoring onDetail={setSelectedDetailId} />}
         </div>
 
         {activeTab !== 'monitoring' && (
@@ -1040,44 +716,57 @@ export function Finance() {
 
                 {modalType === 'receivable' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Nama Konsumen</label>
-                      <input name="name" defaultValue={editingItem?.name} required type="text" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">NIK</label>
-                      <input name="nik" defaultValue={editingItem?.nik} type="text" placeholder="Nomor KTP" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">No. Telepon</label>
-                      <input name="phone" defaultValue={editingItem?.phone} type="text" placeholder="08xxxxxxxxxx" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                    </div>
                     <div className="space-y-1 md:col-span-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Unit / Kavling</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase">Lead Deal (wajib)</label>
                       <select
-                        value={receivableSelectedUnitId ?? ''}
-                        onChange={(e) => setReceivableSelectedUnitId(e.target.value || null)}
-                        className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                        value={receivableLinkedLeadId ?? ''}
+                        onChange={(e) => applyLeadToReceivableForm(e.target.value || null)}
+                        required
+                        className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white"
                       >
-                        <option value="">Pilih unit kavling...</option>
-                        {housingUnits.map((u: { id: string; unit_code: string; unit_type?: string; harga_jual?: number }) => (
-                          <option key={u.id} value={u.id}>
-                            {u.unit_code} {u.unit_type ? ` — ${u.unit_type}` : ''} {u.harga_jual != null ? ` (${formatRupiah(u.harga_jual)})` : ''}
+                        <option value="">— Pilih lead Deal yang belum punya piutang —</option>
+                        {dealLeadsForFinance.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.name} · {l.housingUnit?.unit_code ?? l.interest ?? 'unit ?'}
                           </option>
                         ))}
                       </select>
+                      <p className="text-[10px] text-gray-400">
+                        Nama, kontak, dan unit diambil dari lead & data kavling. Buat atau ubah lead di Marketing jika belum ada.
+                      </p>
                     </div>
+                    {selectedDealLead && (
+                      <div className="md:col-span-2 rounded-xl border border-gray-100 bg-gray-50/80 p-4 space-y-2 text-sm">
+                        <p>
+                          <span className="text-xs font-bold text-gray-500 uppercase">Nama</span>{' '}
+                          <span className="font-bold text-gray-900">{selectedDealLead.name}</span>
+                        </p>
+                        <p>
+                          <span className="text-xs font-bold text-gray-500 uppercase">Telepon / Email</span>{' '}
+                          <span className="text-gray-800">
+                            {selectedDealLead.phone ?? '—'} {selectedDealLead.email ? `· ${selectedDealLead.email}` : ''}
+                          </span>
+                        </p>
+                        <p>
+                          <span className="text-xs font-bold text-gray-500 uppercase">Unit</span>{' '}
+                          <span className="font-bold text-primary">{selectedDealLead.housingUnit?.unit_code ?? '—'}</span>
+                          {selectedDealLead.housingUnit?.harga_jual != null && (
+                            <span className="text-gray-700"> · {formatRupiah(selectedDealLead.housingUnit.harga_jual)}</span>
+                          )}
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">No. Kavling (terisi otomatis bila pilih unit di atas)</label>
-                      <input name="unit_code" value={editingItem ? undefined : receivableUnitCode} defaultValue={editingItem?.unit_code} onChange={e => !editingItem && setReceivableUnitCode(e.target.value)} required type="text" placeholder="Contoh: A-01" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                      <label className="text-xs font-bold text-gray-500 uppercase">NIK</label>
+                      <input name="nik" type="text" placeholder="Nomor KTP (opsional)" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Harga Rumah</label>
-                      <input name="total_price" value={editingItem ? undefined : receivableTotalPrice} defaultValue={editingItem?.total_price} onChange={e => !editingItem && setReceivableTotalPrice(Number(e.target.value) || 0)} required type="number" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Alamat</label>
+                      <input name="address" type="text" placeholder="Opsional" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <label className="text-xs font-bold text-gray-500 uppercase">Skema Pembayaran</label>
-                      <input name="payment_scheme" defaultValue={editingItem?.payment_scheme} required type="text" placeholder="Contoh: Cash Bertahap / KPR" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                      <input name="payment_scheme" required type="text" placeholder="Contoh: Cash Bertahap / KPR" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                     </div>
                   </div>
                 )}
@@ -1087,9 +776,7 @@ export function Finance() {
                   type="button"
                   onClick={() => {
                     setShowModal(false);
-                    setReceivableSelectedUnitId(null);
-                    setReceivableUnitCode('');
-                    setReceivableTotalPrice(0);
+                    setReceivableLinkedLeadId(null);
                   }}
                   className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700"
                 >
@@ -1124,7 +811,7 @@ export function Finance() {
                 <X size={24} />
               </button>
             </div>
-            <p className="px-6 pt-2 text-sm text-gray-500">Konsumen: <strong>{editingPayment?.consumerName ?? addTransactionConsumerName}</strong></p>
+            <p className="px-6 pt-2 text-sm text-gray-500">Konsumen: <strong>{editingPayment?.consumerName ?? '—'}</strong></p>
             <form onSubmit={handleAddTransactionSubmit}>
               <div className="p-6">
                 <div className="grid grid-cols-2 gap-4">

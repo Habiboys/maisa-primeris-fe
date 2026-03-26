@@ -17,10 +17,11 @@ import {
     TrendingUp,
     UserPlus,
     Users,
+    Wallet,
     XCircle,
 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Area,
     AreaChart,
@@ -36,20 +37,19 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
+import { LEAD_STATUS_VALUES, type LeadStatus } from '../../constants/leadStatus';
 import { useConfirmDialog, useHousingUnits, useLeads, useMarketingPersons, useProjects } from '../../hooks';
 import { formatRupiah } from '../../lib/utils';
+import { marketingService } from '../../services/marketing.service';
 import type {
     CreateLeadPayload,
     CreateMarketingPersonPayload,
     HousingUnit,
     Lead,
-    LeadStatus,
     MarketingPerson,
     Project,
 } from '../../types';
 import Housing from '../components/Housing';
-
-const LEAD_STATUSES: LeadStatus[] = ['Baru', 'Follow-up', 'Survey', 'Negoisasi', 'Deal', 'Batal'];
 const COLORS = ['#b7860f', '#d4af37', '#e5c100', '#f1d24c', '#fff194'];
 
 const statusBadgeClass = (status: LeadStatus) => {
@@ -91,6 +91,7 @@ const emptyMarketingForm: CreateMarketingPersonPayload = {
 
 export function Marketing() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
   const { user } = useAuth();
 
@@ -120,6 +121,20 @@ export function Marketing() {
 
   // ── Tab state ──────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'leads' | 'team' | 'siteplan' | 'analytics' | 'housing'>('leads');
+
+  useEffect(() => {
+    const st = location.state as {
+      focusLeadsTab?: boolean;
+      openLeadFormForUnit?: { projectId?: string; unitId?: string };
+    } | null;
+    if (!st?.focusLeadsTab) return;
+    setActiveTab('leads');
+    if (st.openLeadFormForUnit?.projectId) setNewLeadProjectId(st.openLeadFormForUnit.projectId);
+    if (st.openLeadFormForUnit?.unitId) setNewLeadUnitId(st.openLeadFormForUnit.unitId);
+    if (st.openLeadFormForUnit?.projectId || st.openLeadFormForUnit?.unitId) setIsAddModalOpen(true);
+    toast.info('Lengkapi lead menjadi Deal, lalu gunakan ikon dompet pada baris lead untuk buat piutang.');
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
 
   // ── Team pagination ────────────────────────────────────────
   const [teamPage, setTeamPage] = useState(1);
@@ -172,6 +187,8 @@ export function Marketing() {
         ...newLead,
         housing_unit_id: newLeadUnitId || undefined,
       });
+      // Setelah lead tersimpan, backend akan mengunci unit (reserved_lead_id) -> refresh siteplan
+      await siteplanHousing.refetch();
       setIsAddModalOpen(false);
       setNewLead({ ...emptyLeadForm });
       setNewLeadProjectId('');
@@ -201,6 +218,8 @@ export function Marketing() {
         notes: editingLead.notes,
         follow_up_date: editingLead.follow_up_date,
       });
+      // Status unit dapat berubah (release/lock) saat update lead.
+      await siteplanHousing.refetch();
       setIsEditModalOpen(false);
       setEditingLead(null);
       setEditingLeadProjectId('');
@@ -211,6 +230,8 @@ export function Marketing() {
   const handleDeleteLead = async (id: string) => {
     if (await showConfirm({ title: 'Hapus Prospek', description: 'Hapus prospek ini dari database?', variant: 'danger' })) {
       try { await leadHook.remove(id); } catch { /* hook handles toast */ }
+      // Jika lead dihapus, unit yang terkunci harus dilepas.
+      await siteplanHousing.refetch();
     }
   };
 
@@ -261,11 +282,12 @@ export function Marketing() {
   // ── Siteplan handler (update status unit di Kavling & Unit) ───
 
   const handleBookUnit = async (unit: HousingUnit) => {
-    try {
-      await siteplanHousing.update(unit.id, { status: 'Proses' });
-      setSelectedUnit(null);
-      await siteplanHousing.refetch();
-    } catch { /* hook handles toast */ }
+    // Booking/lock unit harus melalui pembuatan Lead,
+    // supaya unit reserved dan status lead/unit saling terhubung.
+    setNewLead({ ...emptyLeadForm });
+    setNewLeadProjectId(unit.project_id ?? siteplanProjectId ?? '');
+    setNewLeadUnitId(unit.id);
+    setIsAddModalOpen(true);
   };
 
   // ════════════════════════════════════════════════════════════
@@ -350,7 +372,7 @@ export function Marketing() {
                   className="w-full md:w-auto pl-10 pr-8 py-2.5 bg-gray-50 text-gray-600 rounded-xl text-sm font-bold border border-gray-200 focus:ring-2 focus:ring-primary outline-none appearance-none cursor-pointer hover:bg-gray-100 transition-all"
                 >
                   <option value="Semua">Semua Status</option>
-                  {LEAD_STATUSES.map((s) => (
+                  {LEAD_STATUS_VALUES.map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -452,6 +474,16 @@ export function Marketing() {
                             >
                               <MessageSquare size={18} />
                             </a>
+                          )}
+                          {lead.status === 'Deal' && !lead.consumer_id && (
+                            <button
+                              type="button"
+                              onClick={() => navigate('/finance', { state: { prefilledLeadId: lead.id } })}
+                              className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                              title="Tambah piutang dari prospek Deal"
+                            >
+                              <Wallet size={18} />
+                            </button>
                           )}
                           <button onClick={() => startEditingLead(lead)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
                             <Edit2 size={18} />
@@ -769,14 +801,26 @@ export function Marketing() {
                           if (consumerId) {
                             navigate('/finance', { state: { openDetailId: consumerId } });
                           } else {
-                            navigate('/finance', {
-                              state: {
-                                openReceivable: true,
-                                preselectedUnitId: selectedUnit.id,
-                                preselectedUnitCode: selectedUnit.unit_code,
-                                preselectedTotalPrice: selectedUnit.harga_jual,
-                              },
-                            });
+                            // Jika unit sudah terkunci oleh lead (Proses), arahkan user ke edit lead itu.
+                            if (selectedUnit.reserved_lead_id) {
+                              setActiveTab('leads');
+                              void (async () => {
+                                try {
+                                  const lead = await marketingService.getLeadById(selectedUnit.reserved_lead_id as string);
+                                  startEditingLead(lead);
+                                } catch {
+                                  toast.error('Gagal memuat lead yang mengunci unit ini.');
+                                }
+                              })();
+                              return;
+                            }
+
+                            // Fallback: jika belum ada reserved lead, buka modal tambah lead.
+                            setActiveTab('leads');
+                            if (selectedUnit.project_id) setNewLeadProjectId(selectedUnit.project_id);
+                            setNewLeadUnitId(selectedUnit.id);
+                            setIsAddModalOpen(true);
+                            toast.info('Buat lead untuk unit ini, lalu tambah piutang dari ikon dompet pada baris lead.');
                           }
                         }}
                         className="w-full py-3 bg-primary/10 text-primary rounded-xl font-bold border border-primary/20 hover:bg-primary/20 transition-all flex items-center justify-center gap-2"
@@ -1142,7 +1186,7 @@ export function Marketing() {
                       onChange={(e) => setEditingLead({ ...editingLead, status: e.target.value as LeadStatus })}
                       className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all appearance-none cursor-pointer"
                     >
-                      {LEAD_STATUSES.map((s) => (
+                      {LEAD_STATUS_VALUES.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>

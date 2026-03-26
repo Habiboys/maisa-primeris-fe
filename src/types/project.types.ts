@@ -16,6 +16,8 @@ export interface Project {
   progress: number;
   status: ProjectStatus;
   deadline?: string;
+  /** Batas/kapasitas pagu biaya (untuk dashboard, satuan IDR) */
+  budget_cap?: number | null;
   created_at: string;
   updated_at: string;
   // relasi yang bisa di-include

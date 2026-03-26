@@ -24,16 +24,20 @@ import {
   Users,
   X
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import { useConfirmDialog, useConstructionStatuses, useProjects, useQCTemplates } from '../../hooks';
 import { type ConstructionStatus, type InventoryLog, type Project, type ProjectUnit, type WorkLog } from '../../lib/mockConstruction';
 import { compressImageToFile } from '../../lib/utils';
+import { formatDateId } from '../../lib/date';
 import { projectService } from '../../services';
 import type { ConstructionStatus as ApiCS, Project as ApiProject, ProjectUnit as ApiProjectUnit } from '../../types';
 import { QCTemplateManager } from '../components/QCTemplateManager';
 import { QualityControl } from '../components/QualityControl';
+import { Modal } from '../components/ui/Modal';
+import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
 
 const mapApiUnitToUi = (unit: ApiProjectUnit): ProjectUnit => ({
   no: unit.no,
@@ -529,6 +533,7 @@ const initialProjects: Project[] = [
 export function Construction() {
   const { projects: apiProjects, create: apiCreateProject, update: apiUpdateProject, remove: apiRemoveProject, refetch: refetchProjects } = useProjects();
   const { statuses: apiStatuses, create: apiCreateStatus, update: apiUpdateStatus, remove: apiRemoveStatus } = useConstructionStatuses();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
@@ -571,18 +576,9 @@ export function Construction() {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
 
   // Construction Status Master Data
-  const [constructionStatuses, setConstructionStatuses] = useState<ConstructionStatus[]>([
-    { id: 'cs-1', name: 'Belum Mulai', progress: 0, color: 'bg-gray-100 text-gray-600', order: 1 },
-    { id: 'cs-2', name: 'Pondasi', progress: 5, color: 'bg-orange-50 text-orange-600', order: 2 },
-    { id: 'cs-3', name: 'Struktur Bawah', progress: 20, color: 'bg-yellow-50 text-yellow-700', order: 3 },
-    { id: 'cs-4', name: 'Pekerjaan Dinding', progress: 40, color: 'bg-blue-50 text-blue-600', order: 4 },
-    { id: 'cs-5', name: 'Pekerjaan Atap', progress: 55, color: 'bg-indigo-50 text-indigo-600', order: 5 },
-    { id: 'cs-6', name: 'Pekerjaan Plafon', progress: 60, color: 'bg-purple-50 text-purple-600', order: 6 },
-    { id: 'cs-7', name: 'Pekerjaan Lantai', progress: 70, color: 'bg-pink-50 text-pink-600', order: 7 },
-    { id: 'cs-8', name: 'Pemasangan Daun Pintu', progress: 85, color: 'bg-cyan-50 text-cyan-600', order: 8 },
-    { id: 'cs-9', name: 'Finishing', progress: 100, color: 'bg-green-50 text-green-600', order: 9 },
-    { id: 'cs-10', name: 'Selesai', progress: 100, color: 'bg-green-50 text-green-600', order: 10 },
-  ]);
+  // Sumber kebenaran: master table `construction_statuses` (API).
+  // Jika kosong (tenant baru), user bisa menambah lewat Status Manager.
+  const [constructionStatuses, setConstructionStatuses] = useState<ConstructionStatus[]>([]);
 
   // Sync API construction statuses → local UI state
   useEffect(() => {
@@ -598,7 +594,7 @@ export function Construction() {
   const [activeTab, setActiveTab] = useState<'units' | 'inventory' | 'reports' | 'map' | 'schedule'>('units');
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     // Default to the latest date available in logs, or today if no logs
-    return new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    return formatDateId(new Date());
   });
   const [selectedUnitForQC, setSelectedUnitForQC] = useState<ProjectUnit | null>(null);
   const [selectedUnitForInventory, setSelectedUnitForInventory] = useState<string>('All');
@@ -625,7 +621,7 @@ export function Construction() {
   // Form States
   const [projectForm, setProjectForm] = useState({ name: '', location: '', unitsCount: '', deadline: '', status: 'On Progress', type: 'cluster' as 'cluster' | 'standalone' });
   const [standaloneForm, setStandaloneForm] = useState({ name: '', location: '', deadline: '', status: 'On Progress' });
-  const [unitForm, setUnitForm] = useState({ no: '', tipe: '', status: 'Belum Mulai', qcTemplateId: '' });
+  const [unitForm, setUnitForm] = useState({ no: '', tipe: '', status: '', qcTemplateId: '' });
   const [editingLog, setEditingLog] = useState<WorkLog | null>(null);
   const [reportForm, setReportForm] = useState({ 
     unitNo: '', 
@@ -645,11 +641,46 @@ export function Construction() {
     return status ? status.progress : 0;
   };
 
-  // Helper: Get status badge color (dynamic from master data)
+  // Helper: Map construction status -> hex color (from master data)
+  // Note: `construction_statuses.color` tersimpan sebagai HEX color, bukan Tailwind class.
   const getStatusColor = (statusName: string): string => {
     const status = constructionStatuses.find(s => s.name === statusName);
-    return status ? status.color : 'bg-gray-100 text-gray-600';
+    return status?.color ?? '#e5e7eb'; // default: gray-200
   };
+
+  const getReadableTextColor = (bgHex: string): string => {
+    // Minimal brightness check untuk memilih hitam/putih.
+    const hex = (bgHex || '').trim();
+    const normalized = hex.startsWith('#') ? hex.slice(1) : hex;
+    if (![3, 6].includes(normalized.length)) return '#111827';
+
+    const full =
+      normalized.length === 3
+        ? normalized.split('').map((c) => c + c).join('')
+        : normalized;
+
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return luminance > 0.6 ? '#111827' : '#ffffff';
+  };
+
+  const legendColors = useMemo(() => {
+    const sorted = constructionStatuses
+      .slice()
+      .sort((a, b) => Number(b.progress ?? 0) - Number(a.progress ?? 0));
+
+    const selesai = sorted.find((s) => Number(s.progress ?? 0) >= 100) ?? sorted[0];
+    const diproses =
+      sorted.find((s) => Number(s.progress ?? 0) > 0 && Number(s.progress ?? 0) < 100) ??
+      sorted[0];
+
+    return {
+      selesaiColor: selesai?.color ?? '#22c55e',
+      diprosesColor: diproses?.color ?? '#2563eb',
+    };
+  }, [constructionStatuses]);
 
   const filteredProjects = projects.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -675,7 +706,7 @@ export function Construction() {
       // Map API work logs → UI work logs
       const uiLogs: WorkLog[] = workLogs.map((wl: import('../../types').WorkLog) => ({
         id: Number(wl.id.replace(/\D/g, '').slice(-8)) || Date.now(),
-        date: wl.date ? new Date(wl.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+        date: wl.date ? formatDateId(wl.date) : '-',
         unitNo: wl.unit_no ?? '-',
         activity: wl.activity,
         workerCount: wl.worker_count ?? 0,
@@ -691,7 +722,7 @@ export function Construction() {
         const key = inv.unit_no ?? 'main';
         if (!uiInventory[key]) uiInventory[key] = [];
         uiInventory[key].push({
-          date: inv.date ? new Date(inv.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+          date: inv.date ? formatDateId(inv.date) : '-',
           item: inv.item ?? '-',
           qty: Number(inv.qty) || 0,
           unit: inv.unit_satuan ?? '-',
@@ -720,7 +751,7 @@ export function Construction() {
 
       const uiLogs: WorkLog[] = workLogs.map((wl: import('../../types').WorkLog) => ({
         id: Number(wl.id.replace(/\D/g, '').slice(-8)) || Date.now(),
-        date: wl.date ? new Date(wl.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+        date: wl.date ? formatDateId(wl.date) : '-',
         unitNo: wl.unit_no ?? '-',
         activity: wl.activity,
         workerCount: wl.worker_count ?? 0,
@@ -735,7 +766,7 @@ export function Construction() {
         const key = inv.unit_no ?? 'main';
         if (!uiInventory[key]) uiInventory[key] = [];
         uiInventory[key].push({
-          date: inv.date ? new Date(inv.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+          date: inv.date ? formatDateId(inv.date) : '-',
           item: inv.item ?? (inv as any).item_name ?? '-',
           qty: Number(inv.qty) || 0,
           unit: inv.unit_satuan ?? '-',
@@ -1293,7 +1324,13 @@ export function Construction() {
                             <p className="text-sm font-bold text-gray-900 group-hover/card:text-primary transition-colors">Unit {unit.no}</p>
                             <p className="text-xs text-gray-500">{unit.tipe}</p>
                           </div>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getStatusColor(unit.status)}`}>
+                          <span
+                            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                            style={{
+                              backgroundColor: getStatusColor(unit.status),
+                              color: getReadableTextColor(getStatusColor(unit.status)),
+                            }}
+                          >
                             {unit.status}
                           </span>
                         </div>
@@ -1338,11 +1375,11 @@ export function Construction() {
                       {/* QC Action Area */}
                       <div className="mt-auto px-3 pb-3">
                         <button
-                          disabled={!unit.qcTemplateId}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (!unit.qcTemplateId) {
-                              toast.error('Pilih Template QC untuk unit ini terlebih dahulu');
+                              toast.error('Template QC belum dipilih untuk unit ini. Buka Data Master > Unit Konstruksi > pilih QC Template, lalu ulangi inspeksi.');
+                              navigate('/data-master/projects');
                               return;
                             }
                             setSelectedUnitForQC(unit);
@@ -1351,7 +1388,7 @@ export function Construction() {
                           className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
                             unit.qcTemplateId
                               ? 'bg-primary/10 hover:bg-primary/20 text-primary border-primary/20'
-                              : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                              : 'bg-gray-100 text-gray-400 border-gray-200'
                           }`}
                         >
                           <CheckCircle2Icon size={14} />
@@ -2001,9 +2038,9 @@ export function Construction() {
                               <option key={date} value={date}>{date}</option>
                             ))
                           }
-                          {!selectedProject.logs.some(l => l.date === new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })) && (
-                            <option value={new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}>
-                              {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} (Hari Ini)
+                          {!selectedProject.logs.some(l => l.date === formatDateId(new Date())) && (
+                            <option value={formatDateId(new Date())}>
+                              {formatDateId(new Date())} (Hari Ini)
                             </option>
                           )}
                         </select>
@@ -2168,10 +2205,18 @@ export function Construction() {
                       </h5>
                       <div className="flex gap-2">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase">
-                          <div className="w-2.5 h-2.5 bg-green-500 rounded-full"></div> Selesai
+                          <div
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: legendColors.selesaiColor }}
+                          ></div>{' '}
+                          Selesai
                         </div>
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase">
-                          <div className="w-2.5 h-2.5 bg-primary rounded-full"></div> Progress
+                          <div
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: legendColors.diprosesColor }}
+                          ></div>{' '}
+                          Diproses
                         </div>
                       </div>
                     </div>
@@ -2185,9 +2230,18 @@ export function Construction() {
                             key={i}
                             className={`aspect-square rounded-xl border-2 flex items-center justify-center text-[10px] font-bold transition-all ${
                               hasUnit
-                                ? `${getStatusColor(unit.status)} hover:shadow-lg`
+                                ? 'hover:shadow-lg'
                                 : 'bg-gray-50 border-gray-200 text-gray-300'
                             }`}
+                            style={
+                              hasUnit
+                                ? {
+                                    backgroundColor: getStatusColor(unit.status),
+                                    borderColor: getStatusColor(unit.status),
+                                    color: getReadableTextColor(getStatusColor(unit.status)),
+                                  }
+                                : undefined
+                            }
                           >
                             {hasUnit ? unit.no : ''}
                           </div>
@@ -2377,22 +2431,13 @@ export function Construction() {
             </div>
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-500 uppercase">Satuan</label>
-              <select 
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              <input
+                type="text"
                 value={inventoryForm.unit}
                 onChange={(e) => setInventoryForm({ ...inventoryForm, unit: e.target.value })}
-              >
-                <option value="">-- Pilih Satuan --</option>
-                <option value="Sak">Sak</option>
-                <option value="Dos">Dos</option>
-                <option value="Batang">Batang</option>
-                <option value="Kg">Kg</option>
-                <option value="Liter">Liter</option>
-                <option value="Meter">Meter</option>
-                <option value="Pcs">Pcs</option>
-                <option value="Truk">Truk</option>
-                <option value="Rit">Rit</option>
-              </select>
+                placeholder="Contoh: Sak, Kg, Meter, Pcs"
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              />
             </div>
           </div>
           <button 
@@ -3042,26 +3087,7 @@ export function Construction() {
   );
 }
 
-function ProjectStatusBadge({ status }: { status: string }) {
-  const styles = {
-    'On Progress': 'bg-primary/10 text-primary border-primary/20',
-    'Completed': 'bg-green-50 text-green-700 border-green-100',
-    'Delayed': 'bg-red-50 text-red-700 border-red-100',
-  }[status] || 'bg-gray-50 text-gray-700 border-gray-100';
-
-  const Icon = {
-    'On Progress': ClockIcon,
-    'Completed': CheckCircle2Icon,
-    'Delayed': AlertTriangleIcon,
-  }[status] || ClockIcon;
-
-  return (
-    <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles}`}>
-      <Icon size={14} />
-      {status}
-    </span>
-  );
-}
+// ProjectStatusBadge direferensikan dari `frontend/src/app/components/ui/ProjectStatusBadge`
 
 function QuickStat({ icon, label, value, onClick }: { icon: React.ReactNode, label: string, value: string, onClick?: () => void }) {
   return (
@@ -3078,17 +3104,4 @@ function QuickStat({ icon, label, value, onClick }: { icon: React.ReactNode, lab
   );
 }
 
-function Modal({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-bold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={20} /></button>
-        </div>
-        <div className="p-6">{children}</div>
-      </div>
-    </div>
-  );
-}
+// Modal sudah di-refactor ke `frontend/src/app/components/ui/Modal.tsx`

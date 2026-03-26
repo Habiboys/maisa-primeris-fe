@@ -4,9 +4,7 @@ import {
     CheckCircle2,
     ChevronDown,
     Clock,
-    Home,
-    TrendingDown,
-    TrendingUp
+    Home
 } from 'lucide-react';
 import React, { useState } from 'react';
 import {
@@ -31,6 +29,9 @@ export function Dashboard() {
   const [period, setPeriod] = useState('6 Bulan Terakhir');
   const [showPeriodMenu, setShowPeriodMenu] = useState(false);
   const periods = ['Hari Ini', 'Minggu Ini', 'Bulan Ini', '6 Bulan Terakhir', 'Tahun Ini'];
+  const totalPagu = (budgetVsActual ?? []).reduce((sum, d) => sum + (d.pagu ?? 0), 0);
+  const totalRealisasi = (budgetVsActual ?? []).reduce((sum, d) => sum + (d.realisasi ?? 0), 0);
+  const efisiensi = totalPagu > 0 ? Math.round((totalRealisasi / totalPagu) * 100) : null;
 
   return (
     <div className="space-y-8">
@@ -83,30 +84,22 @@ export function Dashboard() {
         <KpiCard 
           title="Total Unit" 
           value={String(summary?.total_unit ?? '...')} 
-          subValue="+5 bulan ini" 
           icon={<Home className="text-primary" size={24} />}
-          trend="up"
         />
         <KpiCard 
           title="Unit Terjual" 
           value={String(summary?.unit_terjual ?? '...')} 
-          subValue="70% dari target" 
           icon={<CheckCircle2 className="text-green-600" size={24} />}
-          trend="up"
         />
         <KpiCard 
           title="Unit Progres" 
           value={String(summary?.unit_progres ?? '...')} 
-          subValue="12 kritis" 
           icon={<Clock className="text-orange-600" size={24} />}
-          trend="down"
         />
         <KpiCard 
           title="Pendapatan" 
           value={summary ? formatRupiah(summary.pendapatan) : '...'} 
-          subValue="+12% dari target" 
           icon={<BarChart3 className="text-purple-600" size={24} />}
-          trend="up"
         />
       </div>
 
@@ -193,7 +186,7 @@ export function Dashboard() {
           </div>
           <div className="flex justify-center gap-6 mt-4">
             {salesDistribution.map((item, index) => (
-              <div key={item.name} className="flex items-center gap-2">
+              <div key={`${item.name}-${index}`} className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: index === 1 ? '#b7860f' : item.color }}></div>
                 <span className="text-xs text-gray-600">{item.name}</span>
               </div>
@@ -205,7 +198,9 @@ export function Dashboard() {
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-bold text-gray-800">Realisasi vs Pagu Biaya (M)</h3>
-            <span className="text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded">Efisiensi: 92%</span>
+            <span className="text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded">
+              Efisiensi: {efisiensi != null ? `${efisiensi}%` : '-'}
+            </span>
           </div>
           <div className="h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -234,30 +229,17 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
-
-      </div>
     </div>
   );
 }
 
-function KpiCard({ title, value, subValue, icon, trend }: { title: string, value: string, subValue: string, icon: React.ReactNode, trend: 'up' | 'down' }) {
+function KpiCard({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
   return (
     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
           <h4 className="text-2xl font-bold text-gray-900">{value}</h4>
-          <div className="mt-2 flex items-center gap-1">
-            {trend === 'up' ? (
-              <TrendingUp size={14} className="text-green-500" />
-            ) : (
-              <TrendingDown size={14} className="text-red-500" />
-            )}
-            <span className={`text-xs font-medium ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-              {subValue}
-            </span>
-          </div>
         </div>
         <div className="p-3 bg-gray-50 rounded-lg">
           {icon}
@@ -267,18 +249,3 @@ function KpiCard({ title, value, subValue, icon, trend }: { title: string, value
   );
 }
 
-function ActivityItem({ user, action, target, time }: { user: string, action: string, target: string, time: string }) {
-  return (
-    <div className="flex items-start gap-4 p-3 hover:bg-gray-50 rounded-lg transition-colors">
-      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-        {user.charAt(0)}
-      </div>
-      <div className="flex-1">
-        <p className="text-sm">
-          <span className="font-semibold text-gray-900">{user}</span> {action} <span className="font-semibold text-primary">{target}</span>
-        </p>
-        <span className="text-xs text-gray-400">{time}</span>
-      </div>
-    </div>
-  );
-}

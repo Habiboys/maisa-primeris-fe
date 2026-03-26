@@ -67,6 +67,8 @@ export function TenantDetail() {
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [faviconFile, setFaviconFile] = useState<File | null>(null);
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
   const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '', role: 'Super Admin' as UserRole });
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<{ id: string; name: string; email: string; role: UserRole } | null>(null);
@@ -128,6 +130,16 @@ export function TenantDetail() {
     return () => URL.revokeObjectURL(url);
   }, [logoFile]);
 
+  useEffect(() => {
+    if (!faviconFile) {
+      setFaviconPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(faviconFile);
+    setFaviconPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [faviconFile]);
+
   const goBack = useCallback(() => navigate('/saas'), [navigate]);
 
   const saveInfo = async () => {
@@ -171,8 +183,9 @@ export function TenantDetail() {
     if (!confirmed) return;
     setIsSavingBranding(true);
     try {
-      await updateBranding(brandingForm, logoFile);
+      await updateBranding(brandingForm, logoFile, faviconFile);
       setLogoFile(null);
+      setFaviconFile(null);
       refetchCompany();
     } catch {
       // toast di hook
@@ -288,6 +301,12 @@ export function TenantDetail() {
     logoPreview ??
     (settings?.logo_url
       ? `${import.meta.env.VITE_ASSET_URL ?? ''}${settings.logo_url}`
+      : null);
+
+  const faviconDisplayUrl =
+    faviconPreview ??
+    (settings?.favicon_url
+      ? `${import.meta.env.VITE_ASSET_URL ?? ''}${settings.favicon_url}`
       : null);
 
   if (!isNew && !company && !loadingCompany) {
@@ -576,6 +595,30 @@ export function TenantDetail() {
               />
               {!logoDisplayUrl && !logoFile && (
                 <p className="text-sm text-gray-400 mt-1">Belum ada logo. Upload file untuk menambah logo.</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Favicon (Tab Browser)</label>
+              {faviconDisplayUrl && (
+                <div className="mb-2 flex items-center gap-3">
+                  <ImageWithFallback
+                    src={faviconDisplayUrl}
+                    alt="Favicon saat ini"
+                    className="h-12 w-12 object-contain border border-gray-200 rounded-lg bg-gray-50"
+                  />
+                  <span className="text-sm text-gray-500">
+                    {faviconFile ? 'Preview upload baru' : 'Favicon saat ini'}
+                  </span>
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                onChange={(e) => setFaviconFile(e.target.files?.[0] ?? null)}
+              />
+              {!faviconDisplayUrl && !faviconFile && (
+                <p className="text-sm text-gray-400 mt-1">Belum ada favicon. Upload untuk menampilkan icon di tab browser.</p>
               )}
             </div>
             <div className="flex flex-wrap gap-4">

@@ -2,13 +2,12 @@
  * types/marketing.types.ts
  * Tipe untuk Modul Marketing & Penjualan
  *
- * Status Lead selaras dengan backend ENUM:
- *   'Baru' | 'Follow-up' | 'Survey' | 'Negoisasi' | 'Deal' | 'Batal'
+ * Status lead: lihat `frontend/src/constants/leadStatus.ts` (selaras ENUM backend).
  */
 
-// ── Enums ────────────────────────────────────────────────────
+import type { LeadStatus } from '../constants/leadStatus';
 
-export type LeadStatus = 'Baru' | 'Follow-up' | 'Survey' | 'Negoisasi' | 'Deal' | 'Batal';
+export type { LeadStatus };
 export type LeadSource = 'Facebook Ads' | 'Walk-in' | 'Referral' | 'Instagram' | 'Website';
 export type UnitSitePlanStatus = 'Tersedia' | 'Indent' | 'Booking' | 'Sold' | 'Batal';
 
@@ -25,12 +24,14 @@ export interface Lead {
   housing_unit_id?: string;
   interest?: string;
   status: LeadStatus;
+  /** Terisi setelah piutang dibuat dari lead Deal */
+  consumer_id?: string | null;
   notes?: string;
   follow_up_date?: string;
   created_at: string;
   updated_at: string;
   marketingPerson?: MarketingPerson;
-  housingUnit?: { id: string; unit_code: string; unit_type?: string; project_id?: string };
+  housingUnit?: { id: string; unit_code: string; unit_type?: string; project_id?: string; harga_jual?: number };
 }
 
 export interface CreateLeadPayload {
@@ -55,6 +56,8 @@ export interface LeadListParams {
   source?: string;
   marketing_id?: string;
   project_id?: string;
+  /** true: hanya Deal yang belum punya piutang (untuk dropdown Finance) */
+  unconverted_finance?: boolean;
 }
 
 export interface LeadStats {

@@ -49,6 +49,8 @@ export interface Consumer {
   address?: string;
   unit_code?: string;
   project_id?: string;
+  /** Lead Deal sumber data (bila dibuat lewat marketing) */
+  lead_id?: string | null;
   total_price: number;
   paid_amount: number;
   payment_scheme?: string;
@@ -93,18 +95,12 @@ export interface CreateTransactionPayload {
   project_id?: string;
 }
 
+/** Payload pembuatan konsumen piutang — identitas & unit diisi server dari lead Deal */
 export interface CreateConsumerPayload {
-  name: string;
+  lead_id: string;
   nik?: string;
-  phone?: string;
-  email?: string;
   address?: string;
-  unit_code?: string;
-  project_id?: string;
-  total_price: number;
   payment_scheme?: string;
-  /** Link piutang ke unit kavling (housing_units.id) */
-  housing_unit_id?: string;
 }
 
 export interface CreatePaymentPayload {

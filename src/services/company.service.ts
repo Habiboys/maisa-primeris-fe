@@ -46,14 +46,20 @@ export const companyService = {
     return res.data.data;
   },
 
-  async updateMySettingsWithLogo(payload: CompanySettingsPayload, logo?: File | null): Promise<Company['settings']> {
+  async updateMySettingsWithLogo(
+    payload: CompanySettingsPayload,
+    logo?: File | null,
+    favicon?: File | null,
+  ): Promise<Company['settings']> {
     const form = new FormData();
     if (payload.app_name !== undefined) form.append('app_name', payload.app_name);
     if (payload.logo_url !== undefined && payload.logo_url !== null) form.append('logo_url', payload.logo_url);
+    if (payload.favicon_url !== undefined && payload.favicon_url !== null) form.append('favicon_url', payload.favicon_url);
     if (payload.primary_color !== undefined) form.append('primary_color', payload.primary_color);
     if (payload.secondary_color !== undefined) form.append('secondary_color', payload.secondary_color);
     if (payload.accent_color !== undefined) form.append('accent_color', payload.accent_color);
     if (logo) form.append('logo', logo);
+    if (favicon) form.append('favicon', favicon);
 
     const res = await api.put<ApiResponse<Company['settings']>>('/company-settings/me', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -61,14 +67,21 @@ export const companyService = {
     return res.data.data;
   },
 
-  async updateSettingsByCompanyWithLogo(companyId: string, payload: CompanySettingsPayload, logo?: File | null): Promise<Company['settings']> {
+  async updateSettingsByCompanyWithLogo(
+    companyId: string,
+    payload: CompanySettingsPayload,
+    logo?: File | null,
+    favicon?: File | null,
+  ): Promise<Company['settings']> {
     const form = new FormData();
     if (payload.app_name !== undefined) form.append('app_name', payload.app_name);
     if (payload.logo_url !== undefined && payload.logo_url !== null) form.append('logo_url', payload.logo_url);
+    if (payload.favicon_url !== undefined && payload.favicon_url !== null) form.append('favicon_url', payload.favicon_url);
     if (payload.primary_color !== undefined) form.append('primary_color', payload.primary_color);
     if (payload.secondary_color !== undefined) form.append('secondary_color', payload.secondary_color);
     if (payload.accent_color !== undefined) form.append('accent_color', payload.accent_color);
     if (logo) form.append('logo', logo);
+    if (favicon) form.append('favicon', favicon);
 
     const res = await api.put<ApiResponse<Company['settings']>>(`/company-settings/company/${companyId}`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },

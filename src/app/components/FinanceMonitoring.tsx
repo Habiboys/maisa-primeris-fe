@@ -29,7 +29,14 @@ interface MonitoringData {
   sisa: number;
 }
 
-export function FinanceMonitoring({ onDetail }: { onDetail: (id: string) => void }) {
+export function FinanceMonitoring({
+  onDetail,
+  onAddConsumer,
+}: {
+  onDetail: (id: string) => void;
+  /** Sama dengan aksi "Tambah Piutang" di tab lama — buka modal data konsumen */
+  onAddConsumer?: () => void;
+}) {
   const { consumers } = useConsumers();
 
   const data: MonitoringData[] = consumers.map((c, idx) => ({
@@ -65,12 +72,24 @@ export function FinanceMonitoring({ onDetail }: { onDetail: (id: string) => void
     <div className="w-full">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         {/* Scroll indicator */}
-        <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <FileText size={14} className="text-primary" />
             <h3 className="text-xs font-bold text-gray-700">Monitoring Keuangan</h3>
           </div>
-          <p className="text-[10px] text-gray-500 hidden md:block">Scroll untuk detail →</p>
+          <div className="flex items-center gap-2">
+            {onAddConsumer && (
+              <button
+                type="button"
+                onClick={onAddConsumer}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-[11px] font-bold hover:bg-primary/90 shadow-sm"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                Tambah Piutang
+              </button>
+            )}
+            <p className="text-[10px] text-gray-500 hidden md:block">Scroll untuk detail →</p>
+          </div>
         </div>
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
           <table className="w-full text-left border-collapse" style={{ minWidth: '1000px' }}>
@@ -84,6 +103,25 @@ export function FinanceMonitoring({ onDetail }: { onDetail: (id: string) => void
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
+              {data.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-16 text-center">
+                    <FileText size={48} className="mx-auto text-gray-200 mb-3" />
+                    <h4 className="font-bold text-gray-900 mb-1">Belum ada data piutang</h4>
+                    <p className="text-sm text-gray-500 mb-4">Tambahkan konsumen untuk mulai memantau pembayaran di monitoring.</p>
+                    {onAddConsumer && (
+                      <button
+                        type="button"
+                        onClick={onAddConsumer}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90"
+                      >
+                        <Plus size={18} />
+                        Tambah Piutang
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )}
               {data.map((row) => (
                 <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-3 py-4 text-center align-top">

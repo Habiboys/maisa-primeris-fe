@@ -13,7 +13,7 @@ import {
     Users,
     Wallet
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
     Navigate,
     Outlet,
@@ -225,6 +225,7 @@ export default function App() {
   let appName = 'Primeris One';
   let logoUrl = logoMain;
   let logoMiniUrl = logoMini;
+  let faviconUrl: string | null = null;
   if (user?.role !== 'Platform Owner' && user?.company?.settings) {
     appName = user.company.settings.app_name || 'Primeris One';
     const tenantLogoPath = user.company.settings.logo_url;
@@ -233,7 +234,22 @@ export default function App() {
       logoUrl = tenantLogoUrl;
       logoMiniUrl = tenantLogoUrl;
     }
+    const tenantFaviconPath = user.company.settings.favicon_url;
+    if (tenantFaviconPath) {
+      faviconUrl = `${import.meta.env.VITE_ASSET_URL ?? ''}${tenantFaviconPath}`;
+    }
   }
+
+  useEffect(() => {
+    if (!faviconUrl) return;
+    let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = faviconUrl;
+  }, [faviconUrl]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const allMenuItems: MenuItem[] = useMemo(

@@ -23,35 +23,9 @@ import { FormInventarisLapangan } from '../components/FormInventarisLapangan';
 import { FormPermintaanMaterial } from '../components/FormPermintaanMaterial';
 import { FormSuratJalan } from '../components/FormSuratJalan';
 import { FormTandaTerimaGudang } from '../components/FormTandaTerimaGudang';
+import { Modal } from '../components/ui/Modal';
 
 type TabId = 'permintaan' | 'terima' | 'keluar' | 'inventaris' | 'surat-jalan';
-
-interface ModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-}
-
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h3 className="font-bold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="p-6">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export const SOP: React.FC = () => {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
@@ -744,6 +718,7 @@ export const SOP: React.FC = () => {
         isOpen={showModal} 
         onClose={() => setShowModal(false)} 
         title={`Buat ${tabs.find(t => t.id === modalType)?.label}`}
+        wide
       >
         <div className="text-center py-12 text-gray-500">
           <FileText size={48} className="mx-auto text-gray-300 mb-4" />
