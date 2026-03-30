@@ -57,7 +57,7 @@ export function Login() {
               </p>
             </div>
             <p className="text-sm text-white/60">
-              © 2026 Primeris One. All rights reserved.
+              © 2026 Maisa Primeris. All rights reserved.
             </p>
           </div>
         </div>

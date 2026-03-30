@@ -44,7 +44,8 @@ export interface PPJB {
   housingUnit?: LegalHousingUnit;
 }
 
-export type CreatePPJBPayload = Omit<PPJB, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'>;
+/** `lead_id`: pilih lead Deal — backend mengisi `consumer_id` (opsional, dari UI Transaksi) */
+export type CreatePPJBPayload = Omit<PPJB, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'> & { lead_id?: string };
 
 // ── Akad ─────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export interface Akad {
   housingUnit?: LegalHousingUnit;
 }
 
-export type CreateAkadPayload = Omit<Akad, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'>;
+export type CreateAkadPayload = Omit<Akad, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'> & { lead_id?: string };
 
 // ── BAST ─────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ export interface BAST {
   housingUnit?: LegalHousingUnit;
 }
 
-export type CreateBASTPayload = Omit<BAST, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'>;
+export type CreateBASTPayload = Omit<BAST, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'> & { lead_id?: string };
 
 // ── Pindah Unit ──────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ export interface PindahUnit {
   housingUnitBaru?: LegalHousingUnit;
 }
 
-export type CreatePindahUnitPayload = Omit<PindahUnit, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnitLama' | 'housingUnitBaru'>;
+export type CreatePindahUnitPayload = Omit<PindahUnit, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnitLama' | 'housingUnitBaru'> & { lead_id?: string };
 
 // ── Pembatalan ───────────────────────────────────────────────────
 
@@ -141,4 +142,4 @@ export interface Pembatalan {
   housingUnit?: LegalHousingUnit;
 }
 
-export type CreatePembatalanPayload = Omit<Pembatalan, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'>;
+export type CreatePembatalanPayload = Omit<Pembatalan, 'id' | 'created_at' | 'updated_at' | 'consumer' | 'housingUnit'> & { lead_id?: string };

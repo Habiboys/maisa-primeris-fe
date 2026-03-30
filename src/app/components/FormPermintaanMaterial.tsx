@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { sopService } from '../../services/sop.service';
 import { getErrorMessage } from '../../lib/utils';
+import { useDepartments, useMaterials } from '../../hooks/useMasterData';
 
 interface MaterialItem {
   namaBarang: string;
@@ -33,6 +34,9 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
   onSave,
   data 
 }) => {
+  const { departments } = useDepartments();
+  const { materials } = useMaterials();
+
   const [formData, setFormData] = useState({
     noForm: data?.noForm || '',
     divisi: data?.divisi || '',
@@ -172,16 +176,6 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
     onClose();
   };
 
-  const updateMaterialRow = (index: number, field: keyof MaterialItem, value: any) => {
-    const newRows = [...materialRows];
-    newRows[index] = { ...newRows[index], [field]: value };
-    setMaterialRows(newRows);
-  };
-
-  const addMoreRows = () => {
-    setMaterialRows([...materialRows, ...Array(5).fill({ namaBarang: '', qty: 0, satuan: '', keterangan: '' })]);
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -267,13 +261,16 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Divisi / Departemen</label>
-                    <input
-                      type="text"
+                    <select
                       value={formData.divisi}
                       onChange={(e) => setFormData({ ...formData, divisi: e.target.value })}
                       className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
-                      placeholder="Contoh: Project Construction / Finishing"
-                    />
+                    >
+                      <option value="">— Pilih Divisi / Departemen —</option>
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -292,13 +289,19 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
                 <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nama Material</label>
-                    <input
-                      type="text"
+                    <select
                       value={currentItem.namaBarang}
-                      onChange={(e) => setCurrentItem({...currentItem, namaBarang: e.target.value})}
+                      onChange={(e) => {
+                         const mat = materials.find(m => m.name === e.target.value);
+                         setCurrentItem({...currentItem, namaBarang: e.target.value, satuan: mat ? mat.unit : currentItem.satuan});
+                      }}
                       className="w-full px-4 py-2 bg-white border border-transparent rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                      placeholder="Semen / Besi / Cat..."
-                    />
+                    >
+                      <option value="">— Pilih Material —</option>
+                      {materials.map((m) => (
+                        <option key={m.id} value={m.name}>{m.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">

@@ -79,10 +79,28 @@ export function calcPercent(value: number, total: number): number {
  */
 export function getErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string; error?: string } } };
+    const axiosErr = error as {
+      response?: {
+        data?: {
+          message?: string;
+          error?: string;
+          errors?: string[] | string;
+        };
+      };
+    };
+    const data = axiosErr.response?.data;
+    const detailList = data?.errors;
+    if (detailList) {
+      const joined = Array.isArray(detailList)
+        ? detailList.filter(Boolean).join(' ')
+        : String(detailList);
+      if (joined.trim()) {
+        return [data?.message, joined].filter(Boolean).join(' — ');
+      }
+    }
     return (
-      axiosErr.response?.data?.message ??
-      axiosErr.response?.data?.error ??
+      data?.message ??
+      data?.error ??
       'Terjadi kesalahan pada server'
     );
   }

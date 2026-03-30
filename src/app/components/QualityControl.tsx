@@ -109,7 +109,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
   }, [headerData.unit, searchQuery, submissions]);
 
   const detailSections = useMemo(() => {
-    if (!viewDetail) return [] as Array<{ id: string; name: string; items: Array<{ id: string; description: string; result: string | null; notes?: string | null; photo_url?: string | null }> }>;
+    if (!viewDetail) return [] as Array<{ id: string; name: string; items: Array<{ id: string; description: string; result: string | null; notes?: string | null; photo_url?: string | null; lastUpdate?: string | null }> }>;
     const sectionMap = (viewDetail.template?.sections ?? []).map(section => {
       const items = (section.items ?? []).map(item => {
         const res = viewDetail.results?.find(r => r.item_id === item.id || r.templateItem?.id === item.id);
@@ -119,7 +119,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
           result: res?.result ?? null,
           notes: res?.notes ?? null,
           photo_url: res?.photo_url ?? null,
-          lastUpdate: (res?.updated_at ?? res?.created_at) ?? null,
+          lastUpdate: ((res as any)?.updatedAt ?? res?.updated_at ?? (res as any)?.createdAt ?? res?.created_at) ?? null,
         };
       });
       return { id: section.id, name: section.name, items };
@@ -127,7 +127,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
 
     if (sectionMap.length > 0) return sectionMap;
 
-    const fallback = (viewDetail.results ?? []).reduce<Record<string, { name: string; items: Array<{ id: string; description: string; result: string | null; notes?: string | null; photo_url?: string | null }> }>>((acc, res) => {
+    const fallback = (viewDetail.results ?? []).reduce<Record<string, { name: string; items: Array<{ id: string; description: string; result: string | null; notes?: string | null; photo_url?: string | null; lastUpdate?: string | null }> }>>((acc, res) => {
       const sectionId = res.templateItem?.section_id ?? 'default';
       if (!acc[sectionId]) {
         acc[sectionId] = { name: res.templateItem?.section_id ?? 'Checklist', items: [] };
@@ -138,7 +138,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
         result: res.result ?? null,
         notes: res.notes ?? null,
         photo_url: res.photo_url ?? null,
-        lastUpdate: (res.updated_at ?? res.created_at) ?? null,
+        lastUpdate: ((res as any).updatedAt ?? res.updated_at ?? (res as any).createdAt ?? res.created_at) ?? null,
       });
       return acc;
     }, {});
@@ -159,7 +159,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
     return sec.map((s, idx) => ({
       id: s.id,
       name: s.name ?? `Section ${idx + 1}`,
-      items: (s.items ?? []).map((item, iIdx) => ({
+      items: (s.items ?? []).map((item) => ({
         id: item.id,
         description: item.description,
         result: null,
@@ -237,7 +237,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
             result: (res.result as 'OK' | 'Not OK' | null) ?? null,
             notes: res.notes ?? '',
             photo: res.photo_url ?? null,
-            lastUpdate: (res.updated_at ?? res.created_at) ?? null,
+            lastUpdate: ((res as any).updatedAt ?? res.updated_at ?? (res as any).createdAt ?? res.created_at) ?? null,
           };
         }),
       })));

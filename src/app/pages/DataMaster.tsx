@@ -5,19 +5,59 @@ import {
   Edit2,
   Home,
   Layers,
+  Loader2,
   MapPin,
+  Package,
   Plus,
   Search,
   Trash2,
+  UsersRound,
   X,
 } from 'lucide-react';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useConfirmDialog, useConstructionStatuses, useHousingUnits, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
+import { useConfirmDialog, useConstructionStatuses, useDepartments, useHousingUnits, useMaterials, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
 import { formatDateId } from '../../lib/date';
 import { formatRupiah } from '../../lib/utils';
 import { housingService } from '../../services';
-import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit } from '../../types';
+import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit, UnitBlockRange } from '../../types';
+
+function totalUnitsFromBlockRows(rows: Array<{ prefix: string; start: string; end: string }>): number {
+  let t = 0;
+  for (const row of rows) {
+    const prefix = row.prefix.trim();
+    const start = parseInt(row.start, 10);
+    const end = parseInt(row.end, 10);
+    if (!prefix || Number.isNaN(start) || Number.isNaN(end) || end < start) continue;
+    t += end - start + 1;
+  }
+  return t;
+}
+
+function previewUnitBlocks(rows: Array<{ prefix: string; start: string; end: string }>): string {
+  const parsed: UnitBlockRange[] = rows
+    .map((row) => ({
+      prefix: row.prefix.trim(),
+      start: parseInt(row.start, 10),
+      end: parseInt(row.end, 10),
+    }))
+    .filter((b) => b.prefix && !Number.isNaN(b.start) && !Number.isNaN(b.end) && b.end >= b.start);
+  if (parsed.length === 0) return '';
+  let max = 0;
+  for (const b of parsed) {
+    for (let i = b.start; i <= b.end; i += 1) max = Math.max(max, i);
+  }
+  const w = Math.max(2, String(max).length);
+  return parsed
+    .map((b) => {
+      const n = b.end - b.start + 1;
+      return `${b.prefix}-${String(b.start).padStart(w, '0')} … ${b.prefix}-${String(b.end).padStart(w, '0')} (${n} unit)`;
+    })
+    .join(' · ');
+}
+import { ConstructionStatusManagerPanel } from '../components/ConstructionStatusManagerPanel';
+import { QCTemplateManager } from '../components/QCTemplateManager';
 import { Modal } from '../components/ui/Modal';
 import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
 
@@ -25,6 +65,18 @@ import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
  *  Main DataMaster Component
  * ────────────────────────────────────────────────────────────── */
 export function DataMaster() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const masterSection = useMemo(() => {
+    const p = location.pathname.replace(/\/$/, '');
+    if (p.endsWith('/qc-templates')) return 'qc-templates' as const;
+    if (p.endsWith('/construction-statuses')) return 'construction-statuses' as const;
+    if (p.endsWith('/departments')) return 'departments' as const;
+    if (p.endsWith('/materials')) return 'materials' as const;
+    return 'projects' as const;
+  }, [location.pathname]);
+
   // ── State: drill-down view ──────────────────────────────────
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<'konstruksi' | 'kavling'>('konstruksi');
@@ -54,8 +106,108 @@ export function DataMaster() {
   });
 
   const { statuses: constructionStatuses } = useConstructionStatuses();
-  const { templates: qcTemplates } = useQCTemplates();
+  const {
+    templates: qcTemplates,
+    isLoading: qcTemplatesLoading,
+    create: qcCreateTemplate,
+    update: qcUpdateTemplate,
+    duplicate: qcDuplicateTemplate,
+    remove: qcRemoveTemplate,
+    refetch: qcRefetchTemplates,
+  } = useQCTemplates();
   const { showConfirm, ConfirmDialog } = useConfirmDialog();
+
+  // ── Master Data: Departemen ───────────────────────────────
+  const { departments, refetch: refetchDepartments } = useDepartments();
+  const [showDeptModal, setShowDeptModal] = useState(false);
+  const [editingDept, setEditingDept] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [deptForm, setDeptForm] = useState({ name: '', description: '' });
+  const [isSavingDept, setIsSavingDept] = useState(false);
+
+  const handleSaveDept = async () => {
+    if (!deptForm.name.trim()) { toast.error('Nama divisi wajib diisi'); return; }
+    if (isSavingDept) return;
+    setIsSavingDept(true);
+    try {
+      const { departmentService: deptSvc } = await import('../../services/department.service');
+      if (editingDept) {
+        await deptSvc.update(editingDept.id, { name: deptForm.name, description: deptForm.description || undefined });
+        toast.success('Divisi berhasil diperbarui');
+      } else {
+        await deptSvc.create({ name: deptForm.name, description: deptForm.description || undefined });
+        toast.success('Divisi berhasil ditambahkan');
+      }
+      await refetchDepartments();
+      setShowDeptModal(false);
+      setEditingDept(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Gagal menyimpan divisi');
+    } finally {
+      setIsSavingDept(false);
+    }
+  };
+
+  const handleDeleteDept = async (id: string, name: string) => {
+    if (!(await showConfirm({ title: 'Hapus Divisi', description: `Hapus "${name}"?` }))) return;
+    try {
+      const { departmentService: deptSvc } = await import('../../services/department.service');
+      await deptSvc.delete(id);
+      toast.success('Divisi berhasil dihapus');
+      await refetchDepartments();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Gagal menghapus divisi');
+    }
+  };
+
+  // ── Master Data: Material ─────────────────────────────────
+  const { materials, refetch: refetchMaterials } = useMaterials();
+  const [showMaterialModal, setShowMaterialModal] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<{ id: string; name: string; unit: string; notes: string } | null>(null);
+  const [materialForm, setMaterialForm] = useState({ name: '', unit: '', notes: '' });
+  const [isSavingMaterial, setIsSavingMaterial] = useState(false);
+
+  const handleSaveMaterial = async () => {
+    if (!materialForm.name.trim() || !materialForm.unit.trim()) { toast.error('Nama dan satuan material wajib diisi'); return; }
+    if (isSavingMaterial) return;
+    setIsSavingMaterial(true);
+    try {
+      const { materialService: matSvc } = await import('../../services/material.service');
+      if (editingMaterial) {
+        await matSvc.update(editingMaterial.id, { name: materialForm.name, unit: materialForm.unit, notes: materialForm.notes || undefined });
+        toast.success('Material berhasil diperbarui');
+      } else {
+        await matSvc.create({ name: materialForm.name, unit: materialForm.unit, notes: materialForm.notes || undefined });
+        toast.success('Material berhasil ditambahkan');
+      }
+      await refetchMaterials();
+      setShowMaterialModal(false);
+      setEditingMaterial(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Gagal menyimpan material');
+    } finally {
+      setIsSavingMaterial(false);
+    }
+  };
+
+  const handleDeleteMaterial = async (id: string, name: string) => {
+    if (!(await showConfirm({ title: 'Hapus Material', description: `Hapus "${name}"?` }))) return;
+    try {
+      const { materialService: matSvc } = await import('../../services/material.service');
+      await matSvc.delete(id);
+      toast.success('Material berhasil dihapus');
+      await refetchMaterials();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Gagal menghapus material');
+    }
+  };
+
+  const [isSavingProject, setIsSavingProject] = useState(false);
+  const [isSavingUnit, setIsSavingUnit] = useState(false);
+  const [isSavingKavling, setIsSavingKavling] = useState(false);
+
+  useEffect(() => {
+    if (masterSection !== 'projects') setSelectedProjectId(null);
+  }, [masterSection]);
 
   // ── Project list search ────────────────────────────────────
   const [projectSearch, setProjectSearch] = useState('');
@@ -82,8 +234,8 @@ export function DataMaster() {
     name: '',
     type: 'cluster' as ProjectType,
     location: '',
-    units_count: 0,
-    unit_prefix: '',
+    /** Baris blok: prefix + rentang nomor (mis. A 1–10, B 1–10) */
+    unitBlocks: [{ prefix: '', start: '1', end: '10' }] as Array<{ prefix: string; start: string; end: string }>,
     budget_cap: 0,
     deadline: '',
     status: 'On Progress' as ProjectStatus,
@@ -203,8 +355,7 @@ export function DataMaster() {
       name: '',
       type: 'cluster',
       location: '',
-      units_count: 0,
-      unit_prefix: '',
+      unitBlocks: [{ prefix: '', start: '1', end: '10' }],
       budget_cap: 0,
       deadline: '',
       status: 'On Progress',
@@ -218,8 +369,7 @@ export function DataMaster() {
       name: p.name,
       type: p.type,
       location: p.location ?? '',
-      units_count: p.units_count ?? 0,
-      unit_prefix: '',
+      unitBlocks: [{ prefix: '', start: '1', end: '10' }],
       budget_cap: p.budget_cap ?? 0,
       deadline: toDateInputValue(p.deadline),
       status: p.status,
@@ -232,6 +382,8 @@ export function DataMaster() {
       toast.error('Nama dan tipe proyek wajib diisi');
       return;
     }
+    if (isSavingProject) return;
+    setIsSavingProject(true);
     try {
       if (editingProject) {
         await updateProject(editingProject.id, {
@@ -243,16 +395,28 @@ export function DataMaster() {
           budget_cap: projectForm.budget_cap ?? 0,
         } as Partial<Project>);
       } else {
-        if (projectForm.units_count > 0 && !projectForm.unit_prefix) {
-          toast.error('Prefix unit wajib diisi jika units_count > 0');
-          return;
+        const blocks: UnitBlockRange[] = projectForm.unitBlocks
+          .map((row) => ({
+            prefix: row.prefix.trim(),
+            start: parseInt(row.start, 10),
+            end: parseInt(row.end, 10),
+          }))
+          .filter((b) => b.prefix.length > 0);
+
+        for (const b of blocks) {
+          if (Number.isNaN(b.start) || Number.isNaN(b.end) || b.start < 1 || b.end < b.start) {
+            toast.error(`Rentang tidak valid untuk blok "${b.prefix || '?'}" (nomor awal ≤ akhir, minimal 1)`);
+            return;
+          }
         }
+
+        const totalPlanned = totalUnitsFromBlockRows(projectForm.unitBlocks);
         const created = await createProject({
           name: projectForm.name,
           type: projectForm.type,
           location: projectForm.location || null,
-          units_count: Number(projectForm.units_count) || 0,
-          unit_prefix: projectForm.unit_prefix || undefined,
+          units_count: blocks.length > 0 ? totalPlanned : 0,
+          ...(blocks.length > 0 ? { unit_blocks: blocks } : {}),
           deadline: projectForm.deadline || null,
           status: projectForm.status,
           budget_cap: projectForm.budget_cap ?? 0,
@@ -265,6 +429,8 @@ export function DataMaster() {
       await refetchUnits();
     } catch {
       // hook already handles toast
+    } finally {
+      setIsSavingProject(false);
     }
   };
 
@@ -294,29 +460,45 @@ export function DataMaster() {
 
   const openEditUnit = (u: ProjectUnit) => {
     setEditingUnit(u);
+    const qcId =
+      u.qc_template_id && qcTemplates.some((t) => t.id === u.qc_template_id)
+        ? u.qc_template_id
+        : '';
     setUnitForm({
       no: u.no,
       tipe: u.tipe ?? '',
-      status: u.status ?? constructionStatuses[0]?.name ?? '',
-      qcTemplateId: u.qc_template_id ?? '',
+      status: u.status ?? '',
+      qcTemplateId: qcId,
     });
     setShowUnitModal(true);
   };
 
   const handleSaveUnit = async () => {
     if (!selectedProjectId) return;
-    if (!unitForm.no || !unitForm.tipe || !unitForm.status) {
-      toast.error('No Unit, Tipe, dan Status wajib diisi');
+    if (!unitForm.no?.trim() || !unitForm.tipe?.trim()) {
+      toast.error('No Unit dan Tipe wajib diisi');
       return;
     }
-    const progress = getProgressFromStatus(unitForm.status);
+    if (isSavingUnit) return;
+    const statusName =
+      unitForm.status ||
+      editingUnit?.status ||
+      constructionStatuses[0]?.name ||
+      '';
+    const progress = getProgressFromStatus(statusName);
+    const rawQc = unitForm.qcTemplateId;
+    const validQc =
+      rawQc && qcTemplates.some((t) => t.id === rawQc) ? rawQc : undefined;
     const payload = {
-      no: unitForm.no,
-      tipe: unitForm.tipe,
-      status: unitForm.status,
+      no: unitForm.no.trim(),
+      tipe: unitForm.tipe.trim(),
+      status: statusName,
       progress,
-      qc_template_id: unitForm.qcTemplateId || undefined,
+      qc_template_id: editingUnit
+        ? (validQc === undefined ? null : validQc)
+        : validQc || undefined,
     } as Partial<ProjectUnit>;
+    setIsSavingUnit(true);
     try {
       if (editingUnit) {
         await updateUnit(editingUnit.no, payload);
@@ -433,6 +615,8 @@ export function DataMaster() {
       await kavlingHousing.refetch();
     } catch {
       // hook already handles toast
+    } finally {
+      setIsSavingUnit(false);
     }
   };
 
@@ -472,6 +656,8 @@ export function DataMaster() {
 
   const handleSaveKavling = async () => {
     if (!editingKavling) return;
+    if (isSavingKavling) return;
+    setIsSavingKavling(true);
     try {
       if (kavlingPhotoFile) {
         const fd = new FormData();
@@ -500,6 +686,8 @@ export function DataMaster() {
       await kavlingHousing.refetch();
     } catch {
       // hook already handles toast
+    } finally {
+      setIsSavingKavling(false);
     }
   };
 
@@ -522,6 +710,207 @@ export function DataMaster() {
   // ════════════════════════════════════════════════════════════
   // RENDER
   // ════════════════════════════════════════════════════════════
+
+  if (masterSection === 'qc-templates') {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        {ConfirmDialog}
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-primary/10 rounded-xl text-primary">
+            <Layers size={20} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Template QC</h1>
+            <p className="text-sm text-gray-500 mt-1">Kelola checklist Quality Control untuk inspeksi unit.</p>
+          </div>
+        </div>
+        <QCTemplateManager
+          templates={qcTemplates}
+          onCreate={qcCreateTemplate}
+          onUpdate={qcUpdateTemplate}
+          onDuplicate={qcDuplicateTemplate}
+          onDelete={qcRemoveTemplate}
+          onRefetch={qcRefetchTemplates}
+          isLoading={qcTemplatesLoading}
+          onClose={() => navigate('/data-master/projects')}
+        />
+      </div>
+    );
+  }
+
+  if (masterSection === 'construction-statuses') {
+    return <ConstructionStatusManagerPanel />;
+  }
+
+  // ── RENDER: Divisi/Departemen ────────────────────────────────
+  if (masterSection === 'departments') {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        {ConfirmDialog}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary/10 rounded-xl text-primary"><UsersRound size={20} /></div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Divisi / Departemen</h1>
+              <p className="text-sm text-gray-500 mt-1">Master data divisi untuk digunakan pada form SOP.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setEditingDept(null); setDeptForm({ name: '', description: '' }); setShowDeptModal(true); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+          >
+            <Plus size={16} /> Tambah Divisi
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase border-b border-gray-200">
+                <th className="py-3 px-5">Nama Divisi</th>
+                <th className="py-3 px-5">Deskripsi</th>
+                <th className="py-3 px-5 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {departments.map((d) => (
+                <tr key={d.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                  <td className="py-3 px-5 font-bold text-gray-900">{d.name}</td>
+                  <td className="py-3 px-5 text-gray-500 text-sm">{d.description || '—'}</td>
+                  <td className="py-3 px-5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => { setEditingDept({ id: d.id, name: d.name, description: d.description ?? '' }); setDeptForm({ name: d.name, description: d.description ?? '' }); setShowDeptModal(true); }} className="p-2 rounded-lg border border-gray-200 hover:border-primary/30 hover:bg-primary/5 transition-colors" title="Edit"><Edit2 size={15} className="text-gray-600" /></button>
+                      <button onClick={() => handleDeleteDept(d.id, d.name)} className="p-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors" title="Hapus"><Trash2 size={15} className="text-red-600" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {departments.length === 0 && (
+                <tr><td colSpan={3} className="py-12 text-center text-sm text-gray-400">Belum ada data divisi. Tambahkan divisi baru.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Modal Divisi */}
+        {showDeptModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-lg font-bold">{editingDept ? 'Edit Divisi' : 'Tambah Divisi'}</h3>
+                <button onClick={() => setShowDeptModal(false)} className="text-gray-400 hover:text-gray-600"><X size={22} /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Nama Divisi *</label>
+                  <input value={deptForm.name} onChange={(e) => setDeptForm({ ...deptForm, name: e.target.value })} className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" placeholder="contoh: Divisi Teknik" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Deskripsi</label>
+                  <input value={deptForm.description} onChange={(e) => setDeptForm({ ...deptForm, description: e.target.value })} className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" placeholder="Opsional" />
+                </div>
+              </div>
+              <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                <button onClick={() => setShowDeptModal(false)} className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700">Batal</button>
+                <button onClick={handleSaveDept} disabled={isSavingDept} className="px-6 py-2 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-60 flex items-center gap-2">
+                  {isSavingDept && <Loader2 size={16} className="animate-spin" />}
+                  {isSavingDept ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── RENDER: Material ─────────────────────────────────────────
+  if (masterSection === 'materials') {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        {ConfirmDialog}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary/10 rounded-xl text-primary"><Package size={20} /></div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Master Material</h1>
+              <p className="text-sm text-gray-500 mt-1">Master data material untuk digunakan pada form SOP/pengadaan.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setEditingMaterial(null); setMaterialForm({ name: '', unit: '', notes: '' }); setShowMaterialModal(true); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+          >
+            <Plus size={16} /> Tambah Material
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase border-b border-gray-200">
+                <th className="py-3 px-5">Nama Material</th>
+                <th className="py-3 px-5">Satuan</th>
+                <th className="py-3 px-5">Catatan</th>
+                <th className="py-3 px-5 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {materials.map((m) => (
+                <tr key={m.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                  <td className="py-3 px-5 font-bold text-gray-900">{m.name}</td>
+                  <td className="py-3 px-5 text-gray-700">{m.unit}</td>
+                  <td className="py-3 px-5 text-gray-500 text-sm">{m.notes || '—'}</td>
+                  <td className="py-3 px-5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => { setEditingMaterial({ id: m.id, name: m.name, unit: m.unit, notes: m.notes ?? '' }); setMaterialForm({ name: m.name, unit: m.unit, notes: m.notes ?? '' }); setShowMaterialModal(true); }} className="p-2 rounded-lg border border-gray-200 hover:border-primary/30 hover:bg-primary/5 transition-colors" title="Edit"><Edit2 size={15} className="text-gray-600" /></button>
+                      <button onClick={() => handleDeleteMaterial(m.id, m.name)} className="p-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors" title="Hapus"><Trash2 size={15} className="text-red-600" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {materials.length === 0 && (
+                <tr><td colSpan={4} className="py-12 text-center text-sm text-gray-400">Belum ada data material. Tambahkan material baru.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Modal Material */}
+        {showMaterialModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-lg font-bold">{editingMaterial ? 'Edit Material' : 'Tambah Material'}</h3>
+                <button onClick={() => setShowMaterialModal(false)} className="text-gray-400 hover:text-gray-600"><X size={22} /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Nama Material *</label>
+                  <input value={materialForm.name} onChange={(e) => setMaterialForm({ ...materialForm, name: e.target.value })} className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" placeholder="contoh: Besi Beton" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Satuan *</label>
+                  <input value={materialForm.unit} onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value })} className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" placeholder="contoh: kg / m2 / buah" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Catatan</label>
+                  <input value={materialForm.notes} onChange={(e) => setMaterialForm({ ...materialForm, notes: e.target.value })} className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" placeholder="Opsional" />
+                </div>
+              </div>
+              <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                <button onClick={() => setShowMaterialModal(false)} className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700">Batal</button>
+                <button onClick={handleSaveMaterial} disabled={isSavingMaterial} className="px-6 py-2 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-60 flex items-center gap-2">
+                  {isSavingMaterial && <Loader2 size={16} className="animate-spin" />}
+                  {isSavingMaterial ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -933,36 +1322,103 @@ export function DataMaster() {
             />
           </div>
 
-          {/* Unit auto-create — only on create, not edit */}
+          {/* Unit auto-create — multi-blok: tiap baris = prefix + rentang nomor */}
           {!editingProject && (
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-bold text-primary uppercase">Auto-Create Unit</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Jumlah Unit</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={projectForm.units_count}
-                    onChange={(e) => setProjectForm({ ...projectForm, units_count: Number(e.target.value) })}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Prefix Unit *</label>
-                  <input
-                    value={projectForm.unit_prefix}
-                    onChange={(e) => setProjectForm({ ...projectForm, unit_prefix: e.target.value })}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                    placeholder="Contoh: A, B, BLOK-C"
-                  />
-                </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <p className="text-xs font-bold text-primary uppercase">Auto-Create Unit (per blok)</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProjectForm((p) => ({
+                      ...p,
+                      unitBlocks: [...p.unitBlocks, { prefix: '', start: '1', end: '10' }],
+                    }))
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+                >
+                  <Plus size={14} />
+                  Tambah blok
+                </button>
               </div>
-              {projectForm.units_count > 0 && projectForm.unit_prefix && (
-                <p className="text-xs text-gray-500">
-                  Akan membuat unit: <span className="font-bold text-gray-700">{projectForm.unit_prefix}-01</span> s/d <span className="font-bold text-gray-700">{projectForm.unit_prefix}-{String(projectForm.units_count).padStart(2, '0')}</span>
-                </p>
+              <p className="text-xs text-gray-600">
+                Contoh: Blok <span className="font-semibold">A</span> nomor 1–10, lalu Blok <span className="font-semibold">B</span> 1–10 → total 20 unit (A-01…A-10, B-01…B-10). Kosongkan semua prefix jika tidak ingin membuat unit sekarang.
+              </p>
+              <div className="space-y-2">
+                {projectForm.unitBlocks.map((row, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-12 gap-2 items-end bg-white/80 border border-primary/10 rounded-lg p-2"
+                  >
+                    <div className="col-span-12 sm:col-span-3 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Prefix</label>
+                      <input
+                        value={row.prefix}
+                        onChange={(e) => {
+                          const next = [...projectForm.unitBlocks];
+                          next[idx] = { ...next[idx], prefix: e.target.value };
+                          setProjectForm({ ...projectForm, unitBlocks: next });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        placeholder="A"
+                      />
+                    </div>
+                    <div className="col-span-6 sm:col-span-3 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">No. awal</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={row.start}
+                        onChange={(e) => {
+                          const next = [...projectForm.unitBlocks];
+                          next[idx] = { ...next[idx], start: e.target.value };
+                          setProjectForm({ ...projectForm, unitBlocks: next });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="col-span-6 sm:col-span-3 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">No. akhir</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={row.end}
+                        onChange={(e) => {
+                          const next = [...projectForm.unitBlocks];
+                          next[idx] = { ...next[idx], end: e.target.value };
+                          setProjectForm({ ...projectForm, unitBlocks: next });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="col-span-12 sm:col-span-3 flex justify-end pb-1">
+                      {projectForm.unitBlocks.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProjectForm((p) => ({
+                              ...p,
+                              unitBlocks: p.unitBlocks.filter((_, i) => i !== idx),
+                            }))
+                          }
+                          className="text-xs font-bold text-red-600 hover:underline"
+                        >
+                          Hapus blok
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {totalUnitsFromBlockRows(projectForm.unitBlocks) > 0 && (
+                <div className="text-xs text-gray-700 space-y-1">
+                  <p>
+                    <span className="font-bold text-primary">Total {totalUnitsFromBlockRows(projectForm.unitBlocks)} unit</span>
+                    {' '}
+                    akan dibuat.
+                  </p>
+                  <p className="text-gray-500 break-words">{previewUnitBlocks(projectForm.unitBlocks)}</p>
+                </div>
               )}
             </div>
           )}
@@ -1005,10 +1461,13 @@ export function DataMaster() {
 
           <div className="flex gap-2 mt-2">
             <button
+              type="button"
               onClick={handleSaveProject}
-              className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors"
+              disabled={isSavingProject}
+              className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
             >
-              Simpan
+              {isSavingProject && <Loader2 className="animate-spin" size={18} />}
+              {isSavingProject ? 'Menyimpan...' : 'Simpan'}
             </button>
             <button
               onClick={() => { setShowProjectModal(false); setEditingProject(null); }}
@@ -1050,7 +1509,7 @@ export function DataMaster() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase">Status Konstruksi *</label>
+            <label className="text-xs font-bold text-gray-500 uppercase">Status Konstruksi</label>
             <select
               value={unitForm.status}
               onChange={(e) => setUnitForm({ ...unitForm, status: e.target.value })}
@@ -1083,10 +1542,13 @@ export function DataMaster() {
           </div>
 
           <button
+            type="button"
             onClick={handleSaveUnit}
-            className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors"
+            disabled={isSavingUnit}
+            className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
-            {editingUnit ? 'Simpan Perubahan' : 'Tambah Unit'}
+            {isSavingUnit && <Loader2 className="animate-spin" size={18} />}
+            {isSavingUnit ? 'Menyimpan...' : editingUnit ? 'Simpan Perubahan' : 'Tambah Unit'}
           </button>
         </div>
       </Modal>
@@ -1277,10 +1739,13 @@ export function DataMaster() {
 
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={handleSaveKavling}
-              className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors"
+              disabled={isSavingKavling}
+              className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
             >
-              Simpan Detail
+              {isSavingKavling && <Loader2 className="animate-spin" size={18} />}
+              {isSavingKavling ? 'Menyimpan...' : 'Simpan Detail'}
             </button>
             <button
               onClick={() => { setShowKavlingModal(false); setEditingKavling(null); }}

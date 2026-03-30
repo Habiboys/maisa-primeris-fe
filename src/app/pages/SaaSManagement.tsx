@@ -28,8 +28,7 @@ export function SaaSManagement() {
       const matchesSearch =
         !q ||
         c.name.toLowerCase().includes(q) ||
-        (c.code ?? '').toLowerCase().includes(q) ||
-        (c.domain ?? '').toLowerCase().includes(q);
+        (c.code ?? '').toLowerCase().includes(q);
       const matchesPlan = planFilter === 'Semua Plan' || (c.subscription_plan ?? '') === planFilter;
       const matchesStatus = statusFilter === 'Semua Status' || (c.subscription_status ?? '') === statusFilter;
       const matchesBilling = billingFilter === 'Semua Billing' || (c.billing_cycle ?? '') === billingFilter;
@@ -99,7 +98,7 @@ export function SaaSManagement() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
-                placeholder="Cari nama, kode, atau domain..."
+                placeholder="Cari nama atau kode..."
                 className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
                 value={searchQuery}
                 onChange={(e) => {
@@ -201,9 +200,6 @@ export function SaaSManagement() {
                       <div>
                         <p className="font-semibold text-gray-900">{c.name}</p>
                         <p className="text-sm text-gray-500">{c.code}</p>
-                        {c.domain && (
-                          <p className="text-xs text-gray-400">{c.domain}</p>
-                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-700">{c.subscription_plan ?? '-'}</td>

@@ -16,7 +16,6 @@ export interface Company {
   id: string;
   name: string;
   code: string;
-  domain?: string | null;
   is_active: boolean;
   subscription_plan?: string;
   billing_cycle?: 'monthly' | 'yearly';
@@ -33,7 +32,6 @@ export interface Company {
 export interface CompanyPayload {
   name: string;
   code?: string;
-  domain?: string | null;
   is_active?: boolean;
   subscription_plan?: string;
   billing_cycle?: 'monthly' | 'yearly';

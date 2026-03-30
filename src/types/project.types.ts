@@ -7,6 +7,13 @@ export type ProjectType = 'cluster' | 'standalone';
 export type ProjectStatus = 'On Progress' | 'Completed' | 'Delayed';
 export type QCStatus = 'Pass' | 'Fail' | 'Ongoing';
 
+/** Pembagian nomor unit per blok (hanya dipakai saat POST create project / bulk-units) */
+export interface UnitBlockRange {
+  prefix: string;
+  start: number;
+  end: number;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -20,6 +27,10 @@ export interface Project {
   budget_cap?: number | null;
   created_at: string;
   updated_at: string;
+  /** Hanya untuk body create — multi-blok pengganti unit_prefix + jumlah tunggal */
+  unit_blocks?: UnitBlockRange[];
+  unit_prefix?: string;
+  unit_tipe?: string;
   // relasi yang bisa di-include
   units?: ProjectUnit[];
 }

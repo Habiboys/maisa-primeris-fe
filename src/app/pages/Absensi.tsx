@@ -11,6 +11,7 @@ import {
     Pencil,
     Plus,
     Search,
+    SwitchCamera,
     Target,
     Trash2,
     UserCheck,
@@ -211,6 +212,9 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const [videoInputDevices, setVideoInputDevices] = useState<MediaDeviceInfo[]>([]);
+  /** null = kamera belakang (ideal) pada pembukaan pertama */
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const hasAutoVerified = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [monitorPage, setMonitorPage] = useState(1);
@@ -397,36 +401,62 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
     setCameraTarget(null);
     setCameraError(null);
     setPendingAttendanceAction(null);
+    setVideoInputDevices([]);
   };
 
-  const openCameraCapture = async (kind: 'in' | 'out') => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast.error('Browser tidak mendukung kamera');
+  const startCameraStream = async (deviceId: string | null) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Browser tidak mendukung kamera');
       return;
     }
-
-    setCameraTarget(kind);
-    setCameraError(null);
-    setShowCameraModal(true);
+    stopCameraStream();
     setCameraStarting(true);
-
+    setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: deviceId
+          ? { deviceId: { exact: deviceId } }
+          : { facingMode: { ideal: 'environment' } },
         audio: false,
       });
-
       cameraStreamRef.current = stream;
       if (cameraVideoRef.current) {
         cameraVideoRef.current.srcObject = stream;
         await cameraVideoRef.current.play();
       }
+      const listed = await navigator.mediaDevices.enumerateDevices();
+      const videos = listed.filter((d) => d.kind === 'videoinput');
+      setVideoInputDevices(videos);
+      const active = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
+      if (active) setSelectedCameraId(active);
     } catch {
       setCameraError('Tidak bisa membuka kamera. Pastikan izin kamera sudah diberikan.');
       toast.error('Gagal membuka kamera');
     } finally {
       setCameraStarting(false);
     }
+  };
+
+  const cycleNextCamera = () => {
+    if (videoInputDevices.length < 2) return;
+    const idx = Math.max(
+      0,
+      videoInputDevices.findIndex((d) => d.deviceId === selectedCameraId),
+    );
+    const next = videoInputDevices[(idx + 1) % videoInputDevices.length];
+    setSelectedCameraId(next.deviceId);
+    void startCameraStream(next.deviceId);
+  };
+
+  const openCameraCapture = async (kind: 'in' | 'out') => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Browser tidak mendukung kamera');
+      return;
+    }
+    setCameraTarget(kind);
+    setCameraError(null);
+    setShowCameraModal(true);
+    await startCameraStream(selectedCameraId);
   };
 
   const clearClockPhoto = (kind: 'in' | 'out') => {
@@ -896,13 +926,13 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
     const locLng = Number(userAssignedLocation?.longitude ?? 106.8);
 
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold">Presensi Kehadiran</h2>
-            <p className="text-gray-500">Silakan lakukan absensi kehadiran harian Anda.</p>
+      <div className="space-y-4 sm:space-y-6 max-w-full overflow-x-hidden pb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold leading-tight">Presensi Kehadiran</h2>
+            <p className="text-sm sm:text-base text-gray-500 mt-0.5">Silakan lakukan absensi kehadiran harian Anda.</p>
           </div>
-          <div className="bg-white px-4 py-2 rounded-xl border border-gray-200 flex items-center gap-3 shadow-sm">
+          <div className="bg-white px-3 sm:px-4 py-2 rounded-xl border border-gray-200 flex items-center gap-3 shadow-sm shrink-0 self-start sm:self-auto">
             <Clock className="text-primary" size={20} />
             <div className="flex flex-col">
               <span className="font-bold text-lg leading-tight">
@@ -915,10 +945,10 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
           {/* Clock-in card */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm flex flex-col items-center text-center space-y-6">
+          <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+            <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm flex flex-col items-center text-center space-y-4 sm:space-y-6">
               {activeApprovedLeave && (
                 <div className="w-full p-4 rounded-2xl border border-blue-100 bg-blue-50 text-left">
                   <p className="text-[10px] font-bold text-blue-600 uppercase">Izin/Cuti Aktif</p>
@@ -1068,26 +1098,27 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
           </div>
 
           {/* Map */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden h-[400px]">
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                  <Target size={18} className="text-primary" />
-                  Peta Lokasi Kerja
+          <div className="lg:col-span-2 min-h-0">
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm overflow-hidden h-[min(52vh,420px)] sm:h-[400px] lg:h-[min(70vh,520px)] flex flex-col">
+              <div className="p-3 sm:p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-sm sm:text-base text-gray-800 flex items-center gap-2 min-w-0">
+                  <Target size={18} className="text-primary shrink-0" />
+                  <span className="truncate">Peta Lokasi Kerja</span>
                 </h3>
                 <button
+                  type="button"
                   onClick={handleVerifyLocation}
                   disabled={gpsLoading}
-                  className="text-xs font-bold text-primary hover:underline disabled:opacity-50"
+                  className="text-xs font-bold text-primary hover:underline disabled:opacity-50 touch-manipulation py-1.5 px-1 shrink-0"
                 >
                   {gpsLoading ? 'Mengambil GPS...' : 'Refresh GPS'}
                 </button>
               </div>
-              <div className="h-full w-full relative z-0">
+              <div className="flex-1 min-h-[220px] w-full relative z-0">
                 <MapContainer
                   center={userGpsPos ?? [locLat, locLng]}
                   zoom={16}
-                  style={{ height: '100%', width: '100%' }}
+                  style={{ height: '100%', width: '100%', minHeight: '220px' }}
                 >
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   {/* Work location marker (red pin) */}
@@ -1118,11 +1149,12 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
 
         {/* Pengajuan izin untuk semua role non-super-admin */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-bold text-gray-800">Pengajuan Izin & Cuti Saya</h3>
+          <div className="p-3 sm:p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h3 className="font-bold text-gray-800 text-sm sm:text-base">Pengajuan Izin & Cuti Saya</h3>
             <button
+              type="button"
               onClick={() => setShowLeaveModal(true)}
-              className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold flex items-center gap-2"
+              className="w-full sm:w-auto justify-center px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-bold flex items-center gap-2 touch-manipulation"
             >
               <Plus size={16} /> Ajukan Izin
             </button>
@@ -1354,46 +1386,100 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
         )}
 
         {showCameraModal && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold">Ambil Foto {cameraTarget === 'in' ? 'Absen Masuk' : 'Absen Pulang'}</h3>
-                <button onClick={closeCameraModal} className="p-2 hover:bg-gray-100 rounded-full">
+          <div className="fixed inset-0 z-[110] flex flex-col sm:items-center sm:justify-center sm:p-4 bg-black/70 backdrop-blur-sm">
+            <div className="bg-white w-full h-full sm:h-auto sm:max-h-[95vh] sm:max-w-md sm:rounded-3xl shadow-2xl flex flex-col sm:p-5 overflow-hidden">
+              <div className="flex items-center justify-between px-4 pt-4 pb-2 sm:px-0 sm:pt-0 shrink-0">
+                <h3 className="text-base sm:text-lg font-bold pr-2">
+                  Ambil Foto {cameraTarget === 'in' ? 'Absen Masuk' : 'Absen Pulang'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={closeCameraModal}
+                  className="p-2 hover:bg-gray-100 rounded-full shrink-0 touch-manipulation"
+                  aria-label="Tutup"
+                >
                   <X size={20} />
                 </button>
               </div>
 
-              <div className="rounded-2xl overflow-hidden border border-gray-200 bg-black relative">
-                <video ref={cameraVideoRef} autoPlay playsInline muted className="w-full h-72 object-cover" />
-                {cameraStarting && (
-                  <div className="absolute inset-0 flex items-center justify-center text-white text-sm font-bold bg-black/50">
-                    Membuka kamera...
+              <div className="px-4 sm:px-0 space-y-3 shrink-0">
+                {videoInputDevices.length > 0 && (
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <label className="sr-only" htmlFor="absensi-camera-select">
+                      Pilih kamera
+                    </label>
+                    <select
+                      id="absensi-camera-select"
+                      value={selectedCameraId ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedCameraId(id || null);
+                        void startCameraStream(id || null);
+                      }}
+                      disabled={cameraStarting}
+                      className="flex-1 min-w-0 text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 font-medium touch-manipulation"
+                    >
+                      {videoInputDevices.map((d, i) => (
+                        <option key={d.deviceId || `cam-${i}`} value={d.deviceId}>
+                          {d.label || `Kamera ${i + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                    {videoInputDevices.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={cycleNextCamera}
+                        disabled={cameraStarting}
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50 touch-manipulation whitespace-nowrap"
+                        title="Ganti kamera berikutnya"
+                      >
+                        <SwitchCamera size={18} />
+                        <span className="sm:inline">Ganti</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
-              {cameraError && (
-                <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium">
-                  {cameraError}
+              <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-0 pb-4">
+                <div className="rounded-2xl overflow-hidden border border-gray-200 bg-black relative flex-1 min-h-[200px] max-h-[min(55vh,420px)] sm:max-h-none sm:h-72 w-full">
+                  <video
+                    ref={cameraVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full min-h-[200px] sm:min-h-0 sm:h-72 object-cover"
+                  />
+                  {cameraStarting && (
+                    <div className="absolute inset-0 flex items-center justify-center text-white text-sm font-bold bg-black/50">
+                      Membuka kamera...
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={closeCameraModal}
-                  className="flex-1 py-3 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCaptureFromCamera}
-                  disabled={cameraStarting || !!cameraError || photoCompressing}
-                  className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {photoCompressing ? 'Memproses...' : 'Ambil Foto'}
-                </button>
+                {cameraError && (
+                  <div className="mt-3 p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium">
+                    {cameraError}
+                  </div>
+                )}
+
+                <div className="flex gap-3 mt-4 pb-[env(safe-area-inset-bottom,0px)]">
+                  <button
+                    type="button"
+                    onClick={closeCameraModal}
+                    className="flex-1 min-h-[48px] py-3 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 touch-manipulation"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCaptureFromCamera}
+                    disabled={cameraStarting || !!cameraError || photoCompressing}
+                    className="flex-1 min-h-[48px] py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                  >
+                    {photoCompressing ? 'Memproses...' : 'Ambil Foto'}
+                  </button>
+                </div>
               </div>
               <canvas ref={cameraCanvasRef} className="hidden" />
             </div>
@@ -1407,35 +1493,38 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
    *  SUPER ADMIN VIEW
    * ================================================================ */
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 max-w-full overflow-x-hidden pb-2">
       {ConfirmDialogElement}
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">Absensi Karyawan</h2>
-          <p className="text-gray-500">Monitoring kehadiran real-time dan rekapitulasi pegawai.</p>
+      <div className="flex flex-col gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold">Absensi Karyawan</h2>
+          <p className="text-sm sm:text-base text-gray-500">Monitoring kehadiran real-time dan rekapitulasi pegawai.</p>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-xl w-fit">
-          {(['realtime', 'recap', 'requests', 'settings'] as const).map((tab) => {
-            const labels: Record<string, string> = {
-              realtime: 'Monitor Hari Ini',
-              recap: 'Rekap Bulanan',
-              requests: 'Izin & Cuti',
-              settings: 'Pengaturan Lokasi',
-            };
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                  activeTab === tab ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {labels[tab]}
-              </button>
-            );
-          })}
+        <div className="overflow-x-auto -mx-1 px-1 pb-1 sm:mx-0 sm:px-0">
+          <div className="flex bg-gray-100 p-1 rounded-xl w-max min-w-full sm:min-w-0 sm:w-fit">
+            {(['realtime', 'recap', 'requests', 'settings'] as const).map((tab) => {
+              const labels: Record<string, string> = {
+                realtime: 'Monitor Hari Ini',
+                recap: 'Rekap Bulanan',
+                requests: 'Izin & Cuti',
+                settings: 'Pengaturan Lokasi',
+              };
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all whitespace-nowrap touch-manipulation shrink-0 ${
+                    activeTab === tab ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {labels[tab]}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

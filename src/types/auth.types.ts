@@ -19,7 +19,6 @@ export interface CompanySummary {
   id: string;
   name: string;
   code: string;
-  domain?: string | null;
   is_active?: boolean;
   settings?: CompanyBranding | null;
 }

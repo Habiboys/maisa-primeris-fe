@@ -13,6 +13,7 @@ import type {
   Project,
   ProjectUnit,
   TimeScheduleItem,
+  UnitBlockRange,
   WorkLog,
 } from '../types';
 
@@ -64,7 +65,10 @@ export const projectService = {
     await api.delete(`/projects/${projectId}/units/${unitNo}`);
   },
 
-  async bulkCreateUnits(projectId: string, payload: { count: number; prefix: string; tipe?: string }): Promise<ProjectUnit[]> {
+  async bulkCreateUnits(
+    projectId: string,
+    payload: ({ blocks: UnitBlockRange[] } | { count: number; prefix: string }) & { tipe?: string },
+  ): Promise<ProjectUnit[]> {
     const res = await api.post<ApiResponse<ProjectUnit[]>>(`/projects/${projectId}/bulk-units`, payload);
     return res.data.data;
   },

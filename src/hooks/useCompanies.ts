@@ -63,6 +63,23 @@ export function useCompanies(params?: { search?: string; is_active?: boolean }) 
     }
   };
 
+  const reset = async (id?: string) => {
+    try {
+      const res = id 
+        ? await companyService.resetTenant(id) 
+        : await companyService.resetMyTenant();
+      toast.success('Data perusahaan berhasil di-reset');
+      // Only re-fetch if not super admin resetting their own (causes 403 otherwise)
+      if (id) {
+        await fetchCompanies();
+      }
+      return res;
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+      throw err;
+    }
+  };
+
   return {
     companies,
     isLoading,
@@ -70,6 +87,7 @@ export function useCompanies(params?: { search?: string; is_active?: boolean }) 
     create,
     update,
     remove,
+    reset,
   };
 }
 

@@ -26,6 +26,7 @@ import { Toaster } from 'sonner';
 import logoMini from "../assets/61cebe8f7139be169da0e497fe1e0c50a3adec15.png";
 import logoMain from "../assets/c1369a79bc00e989fba6fc14517246c6364e83d7.png";
 import { useAuth } from '../context/AuthContext';
+import { useConfirmDialog } from '../hooks';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { Absensi } from './pages/Absensi';
 import { Construction as ConstructionModule } from './pages/Construction';
@@ -83,6 +84,7 @@ function AppShell({
 }: AppShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
 
   const isPathActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -92,6 +94,7 @@ function AppShell({
   return (
     <div className="min-h-screen bg-gray-50 flex font-sans text-gray-900">
       <Toaster position="top-right" />
+      {ConfirmDialogElement}
 
       {/* Sidebar */}
       <aside
@@ -167,7 +170,16 @@ function AppShell({
 
         <div className="p-4 border-t border-gray-100">
           <button
-            onClick={() => {
+            type="button"
+            onClick={async () => {
+              const ok = await showConfirm({
+                title: 'Keluar dari sistem',
+                description: 'Apakah Anda yakin ingin keluar? Sesi Anda akan berakhir.',
+                confirmText: 'Keluar',
+                cancelText: 'Batal',
+                variant: 'danger',
+              });
+              if (!ok) return;
               onLogout();
               navigate('/login', { replace: true });
             }}
@@ -222,12 +234,12 @@ export default function App() {
   const { isAuthenticated, isInitialized, user, logout } = useAuth();
   const userRole = user?.role ?? 'Platform Owner';
   const userName = user?.name ?? '';
-  let appName = 'Primeris One';
+  let appName = 'Maisa Primeris';
   let logoUrl = logoMain;
   let logoMiniUrl = logoMini;
   let faviconUrl: string | null = null;
   if (user?.role !== 'Platform Owner' && user?.company?.settings) {
-    appName = user.company.settings.app_name || 'Primeris One';
+    appName = user.company.settings.app_name || 'Maisa Primeris';
     const tenantLogoPath = user.company.settings.logo_url;
     if (tenantLogoPath) {
       const tenantLogoUrl = `${import.meta.env.VITE_ASSET_URL ?? ''}${tenantLogoPath}`;
@@ -265,6 +277,10 @@ export default function App() {
         roles: ['Platform Owner', 'Super Admin', 'Project Management'],
         subItems: [
           { label: 'Data Project', path: '/data-master/projects', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Template QC', path: '/data-master/qc-templates', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Status Konstruksi', path: '/data-master/construction-statuses', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Divisi / Departemen', path: '/data-master/departments', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Master Material', path: '/data-master/materials', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
         ],
       },
       { id: 'finance', label: 'Finance & Accounting', icon: Wallet, path: '/finance', roles: ['Platform Owner', 'Super Admin', 'Finance'] },
@@ -359,6 +375,10 @@ export default function App() {
           )
         )}
         <Route path="data-master/projects" element={<DataMaster />} />
+        <Route path="data-master/qc-templates" element={<DataMaster />} />
+        <Route path="data-master/construction-statuses" element={<DataMaster />} />
+        <Route path="data-master/departments" element={<DataMaster />} />
+        <Route path="data-master/materials" element={<DataMaster />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Route>
     </Routes>

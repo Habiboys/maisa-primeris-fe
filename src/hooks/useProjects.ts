@@ -14,6 +14,7 @@ import type {
   InventoryLog,
   PaginatedResponse,
   TimeScheduleItem,
+  UnitBlockRange,
   WorkLog,
 } from '../types';
 
@@ -141,7 +142,9 @@ export function useProjectUnits(projectId: string) {
     }
   };
 
-  const bulkCreate = async (payload: { count: number; prefix: string; tipe?: string }) => {
+  const bulkCreate = async (
+    payload: ({ blocks: UnitBlockRange[] } | { count: number; prefix: string }) & { tipe?: string },
+  ) => {
     try {
       const created = await projectService.bulkCreateUnits(projectId, payload);
       toast.success(`${created.length} unit berhasil dibuat`);

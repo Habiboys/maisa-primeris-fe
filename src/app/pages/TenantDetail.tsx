@@ -15,16 +15,30 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth, useCompanies, useCompany, useCompanyBranding, useUsers } from '../../hooks';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { getErrorMessage } from '../../lib/utils';
-import type { CompanyPayload, CreateUserPayload } from '../../types';
-import type { CompanySettingsPayload } from '../../types';
-import type { UserRole } from '../../types';
+import type { CompanyPayload, CreateUserPayload, CompanySettingsPayload, UserRole } from '../../types';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { toast } from 'sonner';
+
+
+function useMathCaptcha() {
+  const [num1, setNum1] = useState(0);
+  const [num2, setNum2] = useState(0);
+  
+  const generate = useCallback(() => {
+    setNum1(Math.floor(Math.random() * 10) + 1);
+    setNum2(Math.floor(Math.random() * 10) + 1);
+  }, []);
+
+  useEffect(() => {
+    generate();
+  }, [generate]);
+
+  return { num1, num2, expected: num1 + num2, generate };
+}
 
 const defaultCompanyForm: CompanyPayload = {
   name: '',
   code: '',
-  domain: '',
   is_active: true,
   subscription_plan: 'basic',
   billing_cycle: 'monthly',
@@ -49,7 +63,7 @@ export function TenantDetail() {
     isNew ? undefined : companyId,
     !isNew
   );
-  const { update, create, remove } = useCompanies();
+  const { update, create, remove, reset } = useCompanies();
   const { settings, isLoading: loadingBranding, update: updateBranding } = useCompanyBranding({
     companyId: isPlatformOwner && company?.id ? company.id : undefined,
     enabled: !isNew && Boolean(company?.id),
@@ -77,6 +91,10 @@ export function TenantDetail() {
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetAnswer, setResetAnswer] = useState('');
+  const mathCaptcha = useMathCaptcha();
 
   // Hanya user yang terikat ke tenant ini; Platform Owner tidak punya tenant jadi tidak ditampilkan
   const adminUsers = useMemo(
@@ -95,7 +113,6 @@ export function TenantDetail() {
       setCompanyForm({
         name: company.name,
         code: company.code,
-        domain: company.domain ?? '',
         is_active: company.is_active,
         subscription_plan: company.subscription_plan ?? 'basic',
         billing_cycle: company.billing_cycle ?? 'monthly',
@@ -297,6 +314,30 @@ export function TenantDetail() {
     }
   };
 
+  const handleOpenResetModal = () => {
+    mathCaptcha.generate();
+    setResetAnswer('');
+    setShowResetModal(true);
+  };
+
+  const handleResetTenant = async () => {
+    if (!company?.id) return;
+    if (parseInt(resetAnswer, 10) !== mathCaptcha.expected) {
+      toast.error('Jawaban penjumlahan salah');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      await reset(company.id);
+      setShowResetModal(false);
+      refetchCompany();
+    } catch {
+      // ignore
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const logoDisplayUrl =
     logoPreview ??
     (settings?.logo_url
@@ -373,15 +414,6 @@ export function TenantDetail() {
               />
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Domain (opsional)</label>
-            <input
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              placeholder="example.com"
-              value={companyForm.domain ?? ''}
-              onChange={(e) => setCompanyForm((p) => ({ ...p, domain: e.target.value || null }))}
-            />
-          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
             <input
@@ -677,6 +709,15 @@ export function TenantDetail() {
             <Trash2 size={16} />
             {isDeleting ? 'Menghapus...' : 'Hapus Tenant'}
           </button>
+          
+          <button
+            onClick={handleOpenResetModal}
+            disabled={isResetting}
+            className="inline-flex items-center gap-2 px-4 py-2 mt-3 rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60 w-full sm:w-auto sm:ml-3"
+          >
+            <Trash2 size={16} />
+            {isResetting ? 'Mereset...' : 'Reset Data Perusahaan'}
+          </button>
         </section>
       )}
 
@@ -750,6 +791,48 @@ export function TenantDetail() {
                 className="px-6 py-2 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 disabled:opacity-60"
               >
                 Simpan Perubahan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Reset Data */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-red-600">Peringatan: Reset Data Perusahaan</h3>
+              <button onClick={() => setShowResetModal(false)} className="text-gray-400 hover:text-gray-600">
+                <XCircle size={24} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Anda akan mengosongkan <strong>SELURUH</strong> data operasional untuk tenant ini (Proyek, Leads, Keuangan, dsb). Hanya Akun User & Pengaturan Branding yang tidak terhapus.
+              </p>
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-sm font-bold text-orange-800 mb-2">Konfirmasi Keamanan</p>
+                <p className="text-sm text-orange-700 mb-2">Berapa hasil dari <strong>{mathCaptcha.num1} + {mathCaptcha.num2}</strong>?</p>
+                <input
+                  type="number"
+                  placeholder="Ketik jawaban di sini"
+                  className="w-full px-4 py-2 border border-orange-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                  value={resetAnswer}
+                  onChange={(e) => setResetAnswer(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="p-6 bg-gray-50 flex items-center justify-end gap-3">
+              <button onClick={() => setShowResetModal(false)} className="px-4 py-2 text-gray-600 font-medium hover:text-gray-800">
+                Batal
+              </button>
+              <button
+                onClick={handleResetTenant}
+                disabled={isResetting || !resetAnswer}
+                className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 disabled:opacity-60"
+              >
+                Mulai Reset Data
               </button>
             </div>
           </div>

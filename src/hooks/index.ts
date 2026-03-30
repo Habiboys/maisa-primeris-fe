@@ -20,5 +20,6 @@ export * from './useMarketing';
 export * from './useProjects';
 export * from './useQualityControl';
 export * from './useSOP';
+export * from './useMasterData';
 export * from './useUsers';
 

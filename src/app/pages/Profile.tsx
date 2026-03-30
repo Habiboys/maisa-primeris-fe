@@ -1,11 +1,28 @@
-import { Building2, Eye, EyeOff, Key, Lock, Mail, User } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Building2, Eye, EyeOff, Key, Lock, Mail, User, Trash2, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirmDialog } from '../../hooks';
 import { getErrorMessage } from '../../lib/utils';
 import { authService } from '../../services/auth.service';
+import { useCompanies } from '../../hooks';
 import type { ChangePasswordPayload } from '../../types';
+
+function useMathCaptcha() {
+  const [num1, setNum1] = useState(0);
+  const [num2, setNum2] = useState(0);
+  
+  const generate = useCallback(() => {
+    setNum1(Math.floor(Math.random() * 10) + 1);
+    setNum2(Math.floor(Math.random() * 10) + 1);
+  }, []);
+
+  useEffect(() => {
+    generate();
+  }, [generate]);
+
+  return { num1, num2, expected: num1 + num2, generate };
+}
 
 export function Profile() {
   const { user } = useAuth();
@@ -17,6 +34,12 @@ export function Profile() {
   const [showOldPass, setShowOldPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+
+  const { reset } = useCompanies();
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetAnswer, setResetAnswer] = useState('');
+  const mathCaptcha = useMathCaptcha();
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +89,32 @@ export function Profile() {
       toast.error(getErrorMessage(err));
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleOpenResetModal = () => {
+    mathCaptcha.generate();
+    setResetAnswer('');
+    setShowResetModal(true);
+  };
+
+  const handleResetTenant = async () => {
+    if (parseInt(resetAnswer, 10) !== mathCaptcha.expected) {
+      toast.error('Jawaban penjumlahan salah');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      await reset(); // using resetMyTenant
+      setShowResetModal(false);
+      // Wait a moment then reload to clear all states
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch {
+      // ignore
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -195,6 +244,66 @@ export function Profile() {
           </button>
         </form>
       </div>
+
+      {/* Danger Zone untuk Super Admin */}
+      {user?.role === 'Super Admin' && (
+        <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden p-6 mt-8">
+          <h3 className="text-lg font-bold text-red-600 mb-2">Danger Zone</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Fitur ini akan mengosongkan SELURUH data operasional (proyek, unit, leads, transaksi, dsb) untuk perusahaan ini. Data yang tersisa hanyalah akun pengguna dan pengaturan branding.
+          </p>
+          <button
+            onClick={handleOpenResetModal}
+            className="px-6 py-2.5 bg-orange-500 text-white font-medium hover:bg-orange-600 rounded-xl flex items-center gap-2 transition-colors disabled:opacity-60"
+            disabled={isResetting}
+          >
+            <Trash2 size={18} />
+            {isResetting ? 'Sedang mereset...' : 'Reset Seluruh Data Perusahaan'}
+          </button>
+        </div>
+      )}
+
+      {/* Modal Reset Data */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-red-600">Peringatan: Reset Data Perusahaan</h3>
+              <button onClick={() => setShowResetModal(false)} className="text-gray-400 hover:text-gray-600">
+                <XCircle size={24} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Anda akan mengosongkan <strong>SELURUH</strong> data operasional untuk tenant ini (Proyek, Leads, Keuangan, dsb). Hanya Akun User & Pengaturan Branding yang tidak terhapus.
+              </p>
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-sm font-bold text-orange-800 mb-2">Konfirmasi Keamanan</p>
+                <p className="text-sm text-orange-700 mb-2">Berapa hasil dari <strong>{mathCaptcha.num1} + {mathCaptcha.num2}</strong>?</p>
+                <input
+                  type="number"
+                  placeholder="Ketik jawaban di sini"
+                  className="w-full px-4 py-2 border border-orange-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                  value={resetAnswer}
+                  onChange={(e) => setResetAnswer(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="p-6 bg-gray-50 flex items-center justify-end gap-3">
+              <button onClick={() => setShowResetModal(false)} className="px-4 py-2 text-gray-600 font-medium hover:text-gray-800">
+                Batal
+              </button>
+              <button
+                onClick={handleResetTenant}
+                disabled={isResetting || !resetAnswer}
+                className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 disabled:opacity-60"
+              >
+                Mulai Reset Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

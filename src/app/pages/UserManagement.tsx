@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, Edit2, Key, Plus, Search, Trash2, UserMinus, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Edit2, Key, Loader2, Plus, Search, Trash2, UserMinus, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useActivityLogs, useConfirmDialog, useUsers } from '../../hooks';
@@ -7,7 +7,7 @@ import type { UserRole } from '../../types';
 
 export function UserManagement() {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
-  const { users, isLoading, create, update, toggleStatus, remove } = useUsers();
+  const { users, create, update, toggleStatus, remove } = useUsers();
   const { activityLogs } = useActivityLogs();
   const { user } = useAuth();
   const isPlatformOwner = user?.role === 'Platform Owner';
@@ -22,7 +22,9 @@ export function UserManagement() {
     name: '',
     email: '',
     role: 'Project Management' as UserRole,
+    password: '',
   });
+  const [isSavingUser, setIsSavingUser] = useState(false);
 
   // Hanya tampilkan user dari tenant yang sama (company_id); tenant tidak lihat Platform Owner
   const currentCompanyId = user?.company_id ?? null;
@@ -41,13 +43,13 @@ export function UserManagement() {
 
   const handleOpenAddModal = () => {
     setEditingUser(null);
-    setFormData({ name: '', email: '', role: 'Project Management' });
+    setFormData({ name: '', email: '', role: 'Project Management', password: '' });
     setShowModal(true);
   };
 
   const handleOpenEditModal = (user: typeof users[0]) => {
     setEditingUser({ id: user.id, name: user.name, email: user.email, role: user.role });
-    setFormData({ name: user.name, email: user.email, role: user.role });
+    setFormData({ name: user.name, email: user.email, role: user.role, password: '' });
     setShowModal(true);
   };
 
@@ -56,9 +58,13 @@ export function UserManagement() {
       toast.error('Mohon lengkapi nama dan email');
       return;
     }
+    if (isSavingUser) return;
+    setIsSavingUser(true);
     try {
       if (editingUser) {
-        await update(editingUser.id, { name: formData.name, email: formData.email, role: formData.role });
+        const payload: any = { name: formData.name, email: formData.email, role: formData.role };
+        if (formData.password.trim()) payload.password = formData.password.trim();
+        await update(editingUser.id, payload);
       } else {
         await create({
           name: formData.name,
@@ -71,6 +77,8 @@ export function UserManagement() {
       setShowModal(false);
     } catch {
       // error sudah di-toast oleh hook
+    } finally {
+      setIsSavingUser(false);
     }
   };
 
@@ -367,6 +375,19 @@ export function UserManagement() {
                   <option value="Super Admin">Super Admin</option>
                 </select>
               </div>
+              {/* Password field – opsional saat edit, wajib saat tambah */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">
+                  {editingUser ? 'Password Baru (opsional)' : 'Password'}
+                </label>
+                <input 
+                  type="password"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary outline-none transition-all" 
+                  placeholder={editingUser ? 'Kosongkan jika tidak ingin mengubah' : 'Min. 6 karakter'}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+              </div>
             </div>
             <div className="p-6 bg-gray-50 flex items-center justify-end gap-3">
               <button 
@@ -376,10 +397,13 @@ export function UserManagement() {
                 Batal
               </button>
               <button 
+                type="button"
                 onClick={handleSaveUser}
-                className="px-6 py-2 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 shadow-md shadow-primary/10 transition-all"
+                disabled={isSavingUser}
+                className="px-6 py-2 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 shadow-md shadow-primary/10 transition-all disabled:opacity-60 inline-flex items-center gap-2"
               >
-                {editingUser ? 'Simpan Perubahan' : 'Tambah User'}
+                {isSavingUser && <Loader2 className="animate-spin" size={18} />}
+                {isSavingUser ? 'Menyimpan...' : editingUser ? 'Simpan Perubahan' : 'Tambah User'}
               </button>
             </div>
           </div>

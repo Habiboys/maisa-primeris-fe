@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { sopService } from '../../services/sop.service';
 import { getErrorMessage } from '../../lib/utils';
+import { useMaterials } from '../../hooks/useMasterData';
 
 interface MaterialItem {
   namaBarang: string;
@@ -34,6 +35,7 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
   onSave,
   data 
 }) => {
+  const { materials } = useMaterials();
   const [formData, setFormData] = useState({
     noForm: data?.noForm || '',
     tujuan: data?.tujuan || '',
@@ -177,23 +179,7 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
     onClose();
   };
 
-  const updateMaterialRow = (index: number, field: keyof MaterialItem, value: any) => {
-    const newRows = [...materialRows];
-    newRows[index] = { ...newRows[index], [field]: value };
-    setMaterialRows(newRows);
-  };
-
-  const addMoreRows = () => {
-    setMaterialRows([...materialRows, ...Array(5).fill({ namaBarang: '', qty: 0, satuan: '', keterangan: '' })]);
-  };
-
   if (!isOpen) return null;
-
-  const currentDate = new Date().toLocaleDateString('id-ID', { 
-    day: 'numeric', 
-    month: 'long', 
-    year: 'numeric' 
-  });
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -313,13 +299,19 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
                 <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nama Material</label>
-                    <input
-                      type="text"
+                    <select
                       value={currentItem.namaBarang}
-                      onChange={(e) => setCurrentItem({...currentItem, namaBarang: e.target.value})}
+                      onChange={(e) => {
+                         const mat = materials.find(m => m.name === e.target.value);
+                         setCurrentItem({...currentItem, namaBarang: e.target.value, satuan: mat ? mat.unit : currentItem.satuan});
+                      }}
                       className="w-full px-4 py-2 bg-white border border-transparent rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                      placeholder="Nama material/barang..."
-                    />
+                    >
+                      <option value="">— Pilih Material —</option>
+                      {materials.map((m) => (
+                        <option key={m.id} value={m.name}>{m.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">

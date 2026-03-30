@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { sopService } from '../../services/sop.service';
 import { getErrorMessage } from '../../lib/utils';
+import { useMaterials } from '../../hooks/useMasterData';
 
 interface BarangItem {
   namaBarang: string;
@@ -27,6 +28,7 @@ interface FormSuratJalanProps {
     tandaTerima?: string;
     pengemudi?: string;
     mengetahui?: string;
+    items?: BarangItem[];
   } | null;
 }
 
@@ -52,14 +54,13 @@ export const FormSuratJalan: React.FC<FormSuratJalanProps> = ({
   const [mengetahui, setMengetahui] = useState('');
 
   // Local state for current item being added
+  const { materials } = useMaterials();
   const [currentItem, setCurrentItem] = useState<BarangItem>({
     namaBarang: '',
     satuan: '',
     jumlah: 0,
     keterangan: ''
   });
-
-  const [isAddingItem, setIsAddingItem] = useState(false);
 
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -153,7 +154,6 @@ export const FormSuratJalan: React.FC<FormSuratJalanProps> = ({
       jumlah: 0,
       keterangan: ''
     });
-    setIsAddingItem(false);
     toast.success('Barang ditambahkan ke daftar');
   };
 
@@ -199,21 +199,6 @@ export const FormSuratJalan: React.FC<FormSuratJalanProps> = ({
     
     toast.success('Surat Jalan berhasil disimpan');
     onClose();
-  };
-
-  const updateBarangRow = (index: number, field: keyof BarangItem, value: any) => {
-    const newRows = [...barangRows];
-    newRows[index] = { ...newRows[index], [field]: value };
-    setBarangRows(newRows);
-  };
-
-  const addMoreRows = () => {
-    setBarangRows([...barangRows, ...Array(5).fill({ 
-      namaBarang: '', 
-      satuan: '', 
-      jumlah: 0, 
-      keterangan: '' 
-    })]);
   };
 
   return (
@@ -356,13 +341,20 @@ export const FormSuratJalan: React.FC<FormSuratJalanProps> = ({
                 {/* Input Add Item */}
                 <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 space-y-4">
                   <div className="space-y-1.5">
-                    <input
-                      type="text"
+                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nama Material</label>
+                    <select
                       value={currentItem.namaBarang}
-                      onChange={(e) => setCurrentItem({...currentItem, namaBarang: e.target.value})}
+                      onChange={(e) => {
+                         const mat = materials.find(m => m.name === e.target.value);
+                         setCurrentItem({...currentItem, namaBarang: e.target.value, satuan: mat ? mat.unit : currentItem.satuan});
+                      }}
                       className="w-full px-4 py-2 bg-white border border-transparent rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                      placeholder="Nama Barang / Material..."
-                    />
+                    >
+                      <option value="">— Pilih Material —</option>
+                      {materials.map((m) => (
+                        <option key={m.id} value={m.name}>{m.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex items-center bg-white rounded-lg border border-transparent focus-within:ring-2 focus-within:ring-primary/20 transition-all px-3">

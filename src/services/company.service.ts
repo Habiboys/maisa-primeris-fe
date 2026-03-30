@@ -26,6 +26,16 @@ export const companyService = {
     await api.delete(`/companies/${id}`);
   },
 
+  async resetTenant(id: string): Promise<Company> {
+    const res = await api.post<ApiResponse<Company>>(`/companies/${id}/reset`);
+    return res.data.data;
+  },
+
+  async resetMyTenant(): Promise<Company> {
+    const res = await api.post<ApiResponse<Company>>('/company-settings/me/reset');
+    return res.data.data;
+  },
+
   async getMySettings() {
     const res = await api.get<ApiResponse<Company['settings']>>('/company-settings/me');
     return res.data.data;

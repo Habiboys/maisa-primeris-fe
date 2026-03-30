@@ -13,6 +13,7 @@ import {
   Home,
   Info,
   LayoutGrid,
+  Loader2,
   Map as MapIcon,
   MapPin,
   Pencil,
@@ -590,6 +591,14 @@ export function Construction() {
   const [editingStatus, setEditingStatus] = useState<ConstructionStatus | null>(null);
   const [statusForm, setStatusForm] = useState({ name: '', progress: '', color: 'bg-blue-50 text-blue-600' });
 
+  const [isSavingProject, setIsSavingProject] = useState(false);
+  const [isSavingUnit, setIsSavingUnit] = useState(false);
+  const [isSavingInventory, setIsSavingInventory] = useState(false);
+  const [isSavingWorkLog, setIsSavingWorkLog] = useState(false);
+  const [isSavingStandalone, setIsSavingStandalone] = useState(false);
+  const [isSavingUpdateProgress, setIsSavingUpdateProgress] = useState(false);
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'units' | 'inventory' | 'reports' | 'map' | 'schedule'>('units');
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -793,7 +802,8 @@ export function Construction() {
     }
 
     if (!selectedProjectId) return;
-
+    if (isSavingInventory) return;
+    setIsSavingInventory(true);
     try {
       await projectService.createInventoryLog(selectedProjectId, {
         unit_no: unitNoToUse,
@@ -807,6 +817,8 @@ export function Construction() {
       await refreshProjectDetails(selectedProjectId);
     } catch {
       /* hook shows toast */
+    } finally {
+      setIsSavingInventory(false);
     }
 
     setShowInventoryModal(false);
@@ -818,7 +830,8 @@ export function Construction() {
       toast.error('Nama dan Lokasi wajib diisi');
       return;
     }
-
+    if (isSavingProject) return;
+    setIsSavingProject(true);
     try {
       if (editingProject) {
         await apiUpdateProject(editingProject.id, {
@@ -841,6 +854,8 @@ export function Construction() {
       }
     } catch {
       /* hook already shows toast */
+    } finally {
+      setIsSavingProject(false);
     }
     setShowProjectModal(false);
     setEditingProject(null);
@@ -862,6 +877,8 @@ export function Construction() {
       toast.error('No Unit wajib diisi');
       return;
     }
+    if (isSavingUnit) return;
+    setIsSavingUnit(true);
 
     const progress = getProgressFromStatus(unitForm.status);
 
@@ -889,6 +906,8 @@ export function Construction() {
       }
     } catch {
       /* hook/service shows toast */
+    } finally {
+      setIsSavingUnit(false);
     }
 
     setShowUnitModal(false);
@@ -915,7 +934,8 @@ export function Construction() {
       toast.error('Nama dan lokasi harus diisi');
       return;
     }
-
+    if (isSavingStandalone) return;
+    setIsSavingStandalone(true);
     try {
       if (selectedProjectId) {
         await apiUpdateProject(selectedProjectId, {
@@ -927,6 +947,8 @@ export function Construction() {
       }
     } catch {
       /* hook shows toast */
+    } finally {
+      setIsSavingStandalone(false);
     }
 
     setShowEditStandaloneModal(false);
@@ -938,6 +960,8 @@ export function Construction() {
       toast.error('Pilih unit dan status terlebih dahulu');
       return;
     }
+    if (isSavingUpdateProgress) return;
+    setIsSavingUpdateProgress(true);
     const progress = getProgressFromStatus(updateProgressStatus);
     try {
       await projectService.updateUnit(selectedProjectId, updateProgressUnit.no, {
@@ -946,7 +970,9 @@ export function Construction() {
       } as Partial<import('../../types').ProjectUnit>);
       await refetchProjects();
       toast.success(`Progress unit ${updateProgressUnit.no} berhasil diupdate`);
-    } catch { /* hook shows toast */ }
+    } catch { /* hook shows toast */ } finally {
+      setIsSavingUpdateProgress(false);
+    }
     setShowUpdateProgressModal(false);
     setUpdateProgressUnit(null);
     setUpdateProgressStatus('');
@@ -957,7 +983,8 @@ export function Construction() {
       toast.error('Unit dan Aktivitas wajib diisi');
       return;
     }
-
+    if (isSavingWorkLog) return;
+    setIsSavingWorkLog(true);
     try {
       if (editingLog) {
         await projectService.updateWorkLog(selectedProjectId, String(editingLog.id), {
@@ -987,6 +1014,8 @@ export function Construction() {
       await refreshProjectDetails(selectedProjectId);
     } catch {
       /* hook shows toast */
+    } finally {
+      setIsSavingWorkLog(false);
     }
 
     setShowReportModal(false);
@@ -1056,7 +1085,8 @@ export function Construction() {
       toast.error('Nama dan persentase harus diisi');
       return;
     }
-
+    if (isSavingStatus) return;
+    setIsSavingStatus(true);
     try {
       if (editingStatus) {
         await apiUpdateStatus(editingStatus.id, {
@@ -1074,6 +1104,8 @@ export function Construction() {
       }
     } catch {
       /* hook shows toast */
+    } finally {
+      setIsSavingStatus(false);
     }
 
     setEditingStatus(null);
@@ -2261,22 +2293,7 @@ export function Construction() {
               <h2 className="text-2xl font-bold">Project & Manajemen Konstruksi</h2>
               <p className="text-gray-500">Monitor progres pembangunan fisik, logistik, dan laporan lapangan.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleAddStatus}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-blue-500/20 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors font-bold text-sm"
-              >
-                <Settings className="w-4 h-4" />
-                Kelola Status Konstruksi
-              </button>
-              <button
-                onClick={() => setShowTemplateManager(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-primary/20 text-primary rounded-xl hover:bg-primary/5 transition-colors font-bold text-sm"
-              >
-                <Settings className="w-4 h-4" />
-                Kelola Template QC
-              </button>
-            </div>
+
           </div>
 
           {/* Stats Quick View */}
@@ -2441,10 +2458,13 @@ export function Construction() {
             </div>
           </div>
           <button 
+            type="button"
             onClick={handleAddInventory}
-            className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2 hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+            disabled={isSavingInventory}
+            className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2 hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
-            Simpan Mutasi Unit
+            {isSavingInventory && <Loader2 className="animate-spin" size={18} />}
+            {isSavingInventory ? 'Menyimpan...' : 'Simpan Mutasi Unit'}
           </button>
         </div>
       </Modal>
@@ -2536,180 +2556,19 @@ export function Construction() {
               </button>
             )}
             <button 
+              type="button"
               onClick={handleSaveProject}
-              className={`${editingProject ? 'flex-[2]' : 'w-full'} py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all`}
+              disabled={isSavingProject}
+              className={`${editingProject ? 'flex-[2]' : 'w-full'} py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all disabled:opacity-60 inline-flex items-center justify-center gap-2`}
             >
-              {editingProject ? 'Simpan Perubahan' : 'Buat Proyek'}
+              {isSavingProject && <Loader2 className="animate-spin" size={18} />}
+              {isSavingProject ? 'Menyimpan...' : editingProject ? 'Simpan Perubahan' : 'Buat Proyek'}
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* QC Template Manager Modal */}
-      {showTemplateManager && (
-        <QCTemplateManager
-          templates={qcTemplates}
-          onCreate={createTemplate}
-          onUpdate={updateTemplate}
-          onDuplicate={duplicateTemplate}
-          onDelete={deleteTemplate}
-          onRefetch={refetchTemplates}
-          isLoading={qcTemplatesLoading}
-          onClose={() => setShowTemplateManager(false)}
-        />
-      )}
 
-      {/* Construction Status Manager Modal - COMPACT */}
-      {showStatusManager && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-            {/* Header - Compact */}
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-3 text-white flex items-center justify-between">
-              <div>
-                <h2 className="font-bold">Kelola Status Konstruksi</h2>
-                <p className="text-xs text-blue-100 mt-0.5">Master data tahapan pembangunan</p>
-              </div>
-              <button 
-                onClick={() => setShowStatusManager(false)}
-                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Content - Compact */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {/* Add Form - Compact & Inline */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                <div className="flex items-end gap-2">
-                  <div className="flex-1 space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Nama Tahapan</label>
-                    <input 
-                      type="text" 
-                      placeholder="Contoh: Pekerjaan Atap"
-                      value={statusForm.name}
-                      onChange={(e) => setStatusForm({...statusForm, name: e.target.value})}
-                      className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded text-sm outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="w-24 space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Progres %</label>
-                    <input 
-                      type="number" 
-                      min="0"
-                      max="100"
-                      placeholder="0-100"
-                      value={statusForm.progress}
-                      onChange={(e) => setStatusForm({...statusForm, progress: e.target.value})}
-                      className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded text-sm outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="w-28 space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Warna</label>
-                    <select 
-                      value={statusForm.color}
-                      onChange={(e) => setStatusForm({...statusForm, color: e.target.value})}
-                      className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-xs outline-none focus:border-blue-500"
-                    >
-                      <option value="bg-gray-100 text-gray-600">Abu-abu</option>
-                      <option value="bg-red-50 text-red-600">Merah</option>
-                      <option value="bg-orange-50 text-orange-600">Orange</option>
-                      <option value="bg-yellow-50 text-yellow-700">Kuning</option>
-                      <option value="bg-green-50 text-green-600">Hijau</option>
-                      <option value="bg-blue-50 text-blue-600">Biru</option>
-                      <option value="bg-indigo-50 text-indigo-600">Indigo</option>
-                      <option value="bg-purple-50 text-purple-600">Ungu</option>
-                      <option value="bg-pink-50 text-pink-600">Pink</option>
-                      <option value="bg-cyan-50 text-cyan-600">Cyan</option>
-                    </select>
-                  </div>
-                  <button 
-                    onClick={handleSaveStatus}
-                    className="px-4 py-1.5 bg-blue-600 text-white text-sm font-bold rounded hover:bg-blue-700 transition-colors whitespace-nowrap"
-                  >
-                    {editingStatus ? 'Update' : '+ Tambah'}
-                  </button>
-                  {editingStatus && (
-                    <button 
-                      onClick={() => {
-                        setEditingStatus(null);
-                        setStatusForm({ name: '', progress: '', color: 'bg-blue-50 text-blue-600' });
-                      }}
-                      className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm font-bold rounded hover:bg-gray-300 transition-colors"
-                    >
-                      Batal
-                    </button>
-                  )}
-                </div>
-                {/* Info Helper */}
-                <p className="text-[10px] text-blue-600 mt-2 flex items-center gap-1">
-                  <Info className="w-3 h-3" />
-                  Urutan otomatis disesuaikan berdasarkan % progres
-                </p>
-              </div>
-
-              {/* Status List - Compact */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <h3 className="text-sm font-bold text-gray-500 uppercase">
-                    {constructionStatuses.length} Status Tersedia
-                  </h3>
-                </div>
-                {constructionStatuses.sort((a, b) => a.order - b.order).map((status, idx) => (
-                  <div 
-                    key={status.id} 
-                    className="bg-white border border-gray-200 rounded-lg p-2.5 hover:border-blue-300 transition-all group flex items-center gap-3"
-                  >
-                    <div className="text-lg font-bold text-gray-300 w-6 text-center flex-shrink-0">
-                      {idx + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-sm font-bold text-gray-900 truncate">{status.name}</h4>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${status.color} flex-shrink-0`}>
-                          {status.progress}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all"
-                          style={{ width: `${status.progress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <button 
-                        onClick={() => handleEditStatus(status)}
-                        className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
-                        title="Edit"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteStatus(status.id)}
-                        className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
-                        title="Hapus"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Footer - Compact */}
-            <div className="border-t border-gray-200 p-3 bg-gray-50">
-              <button 
-                onClick={() => setShowStatusManager(false)}
-                className="w-full py-2 bg-gray-600 text-white text-sm font-bold rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal Laporan Harian */}
       <Modal 
@@ -2827,10 +2686,13 @@ export function Construction() {
             </div>
           </div>
           <button 
+            type="button"
             onClick={handleAddWorkLog}
-            className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2 hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+            disabled={isSavingWorkLog}
+            className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2 hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
-            {editingLog ? 'Simpan Perubahan' : 'Posting Laporan Unit'}
+            {isSavingWorkLog && <Loader2 className="animate-spin" size={18} />}
+            {isSavingWorkLog ? 'Menyimpan...' : editingLog ? 'Simpan Perubahan' : 'Posting Laporan Unit'}
           </button>
         </div>
       </Modal>
@@ -2904,10 +2766,13 @@ export function Construction() {
             </p>
           </div>
           <button 
+            type="button"
             onClick={handleSaveUnit}
-            className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2 hover:bg-primary/90 shadow-lg shadow-primary/20"
+            disabled={isSavingUnit}
+            className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2 hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
-            {editingUnit ? 'Simpan Perubahan' : 'Tambah Unit'}
+            {isSavingUnit && <Loader2 className="animate-spin" size={18} />}
+            {isSavingUnit ? 'Menyimpan...' : editingUnit ? 'Simpan Perubahan' : 'Tambah Unit'}
           </button>
         </div>
       </Modal>
@@ -2999,11 +2864,13 @@ export function Construction() {
         </div>
         <div className="flex gap-2 mt-6">
           <button
+            type="button"
             onClick={handleSaveUpdateProgress}
-            disabled={!updateProgressUnit || !updateProgressStatus}
-            className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={!updateProgressUnit || !updateProgressStatus || isSavingUpdateProgress}
+            className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
           >
-            Simpan
+            {isSavingUpdateProgress && <Loader2 className="animate-spin" size={18} />}
+            {isSavingUpdateProgress ? 'Menyimpan...' : 'Simpan'}
           </button>
           <button
             onClick={() => { setShowUpdateProgressModal(false); setUpdateProgressUnit(null); setUpdateProgressStatus(''); }}
@@ -3070,10 +2937,13 @@ export function Construction() {
         </div>
         <div className="flex gap-2 mt-6">
           <button 
+            type="button"
             onClick={handleSaveStandalone}
-            className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors"
+            disabled={isSavingStandalone}
+            className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
-            Simpan Perubahan
+            {isSavingStandalone && <Loader2 className="animate-spin" size={18} />}
+            {isSavingStandalone ? 'Menyimpan...' : 'Simpan Perubahan'}
           </button>
           <button 
             onClick={() => setShowEditStandaloneModal(false)}

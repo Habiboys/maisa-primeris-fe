@@ -1,8 +1,12 @@
 import { ArrowRightLeft, Calendar, Edit2, FileCheck, FileText, Plus, Search, Trash2, User, XCircle, XOctagon } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { useAkad, useBAST, useConfirmDialog, useHousingUnits, usePembatalan, usePindahUnit, usePPJB, useProjects } from '../../hooks';
 import { formatRupiah } from '../../lib/utils';
-import type { Akad, BAST, Pembatalan, PindahUnit, PPJB } from '../../types';
+import { marketingService } from '../../services/marketing.service';
+import type { Akad, BAST, Lead, Pembatalan, PindahUnit, PPJB } from '../../types';
+
+type WithLeadId<T extends { consumer_id?: string }> = Partial<T> & { lead_id?: string };
 
 // ── Status Badge ──────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -31,11 +35,11 @@ const inputCls = 'w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-x
 const labelCls = 'text-xs font-bold text-gray-400 uppercase tracking-widest';
 
 // ── Initial form states ───────────────────────────────────────────
-const emptyPPJB = { nomor_ppjb: '', consumer_id: '', housing_unit_id: '', tanggal_ppjb: '', harga_ppjb: '', status: 'Draft' as const, notes: '' };
-const emptyAkad = { nomor_akad: '', consumer_id: '', housing_unit_id: '', tanggal_akad: '', bank: '', notaris: '', status: 'Draft' as const, notes: '' };
-const emptyBAST = { nomor_bast: '', consumer_id: '', housing_unit_id: '', tanggal_bast: '', status: 'Draft' as const, notes: '' };
-const emptyPindah = { consumer_id: '', housing_unit_id_lama: '', housing_unit_id_baru: '', tanggal_pindah: '', alasan: '', selisih_harga: '', status: 'Proses' as const };
-const emptyPembatalan = { consumer_id: '', housing_unit_id: '', tanggal_batal: '', alasan: '', refund_amount: '', status: 'Proses' as const };
+const emptyPPJB = { nomor_ppjb: '', lead_id: '', housing_unit_id: '', tanggal_ppjb: '', harga_ppjb: '', status: 'Draft' as const, notes: '' };
+const emptyAkad = { nomor_akad: '', lead_id: '', housing_unit_id: '', tanggal_akad: '', bank: '', notaris: '', status: 'Draft' as const, notes: '' };
+const emptyBAST = { nomor_bast: '', lead_id: '', housing_unit_id: '', tanggal_bast: '', status: 'Draft' as const, notes: '' };
+const emptyPindah = { lead_id: '', housing_unit_id_lama: '', housing_unit_id_baru: '', tanggal_pindah: '', alasan: '', selisih_harga: '', status: 'Proses' as const };
+const emptyPembatalan = { lead_id: '', housing_unit_id: '', tanggal_batal: '', alasan: '', refund_amount: '', status: 'Proses' as const };
 
 // ── Pagination bar (reusable) ─────────────────────────────────────
 function PaginationBar(
@@ -119,36 +123,68 @@ export function Transaksi() {
 
   // PPJB modals
   const [isAddPPJBOpen, setIsAddPPJBOpen] = useState(false);
-  const [editingPPJB, setEditingPPJB] = useState<Partial<PPJB> | null>(null);
+  const [editingPPJB, setEditingPPJB] = useState<WithLeadId<PPJB> | null>(null);
   const [newPPJB, setNewPPJB] = useState({ ...emptyPPJB });
 
   // Akad modals
   const [isAddAkadOpen, setIsAddAkadOpen] = useState(false);
-  const [editingAkad, setEditingAkad] = useState<Partial<Akad> | null>(null);
+  const [editingAkad, setEditingAkad] = useState<WithLeadId<Akad> | null>(null);
   const [newAkad, setNewAkad] = useState({ ...emptyAkad });
 
   // BAST modals
   const [isAddBASTOpen, setIsAddBASTOpen] = useState(false);
-  const [editingBAST, setEditingBAST] = useState<Partial<BAST> | null>(null);
+  const [editingBAST, setEditingBAST] = useState<WithLeadId<BAST> | null>(null);
   const [newBAST, setNewBAST] = useState({ ...emptyBAST });
 
   // Pindah Unit modals
   const [isAddPindahOpen, setIsAddPindahOpen] = useState(false);
-  const [editingPindah, setEditingPindah] = useState<Partial<PindahUnit> | null>(null);
+  const [editingPindah, setEditingPindah] = useState<WithLeadId<PindahUnit> | null>(null);
   const [newPindah, setNewPindah] = useState({ ...emptyPindah });
 
   // Pembatalan modals
   const [isAddPembatalanOpen, setIsAddPembatalanOpen] = useState(false);
-  const [editingPembatalan, setEditingPembatalan] = useState<Partial<Pembatalan> | null>(null);
+  const [editingPembatalan, setEditingPembatalan] = useState<WithLeadId<Pembatalan> | null>(null);
   const [newPembatalan, setNewPembatalan] = useState({ ...emptyPembatalan });
+
+  /** Lead Deal yang sudah punya konsumen — untuk dropdown dokumen legal */
+  const [dealLeadsLegal, setDealLeadsLegal] = useState<Lead[]>([]);
+  const needDealLeads =
+    isAddPPJBOpen || !!editingPPJB
+    || isAddAkadOpen || !!editingAkad
+    || isAddBASTOpen || !!editingBAST
+    || isAddPindahOpen || !!editingPindah
+    || isAddPembatalanOpen || !!editingPembatalan;
+
+  useEffect(() => {
+    if (!needDealLeads) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await marketingService.getLeads({ status: 'Deal', limit: 500, page: 1 });
+        if (!cancelled) setDealLeadsLegal(res.data ?? []);
+      } catch {
+        if (!cancelled) setDealLeadsLegal([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [needDealLeads]);
+
+  const dealLeadsWithConsumer = useMemo(
+    () => (dealLeadsLegal ?? []).filter((l) => l.consumer_id),
+    [dealLeadsLegal],
+  );
 
   // ── PPJB handlers ───────────────────────────────────────────────
   const handleAddPPJB = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newPPJB.lead_id) {
+      toast.error('Pilih konsumen (lead Deal yang sudah punya data konsumen).');
+      return;
+    }
     try {
       await createPPJB({
         nomor_ppjb: newPPJB.nomor_ppjb,
-        consumer_id: newPPJB.consumer_id || undefined,
+        lead_id: newPPJB.lead_id,
         housing_unit_id: ppjbUnitId || undefined,
         tanggal_ppjb: newPPJB.tanggal_ppjb,
         harga_ppjb: newPPJB.harga_ppjb ? Number(newPPJB.harga_ppjb) : undefined,
@@ -165,7 +201,13 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingPPJB?.id) return;
     try {
-      await updatePPJB(editingPPJB.id, { ...editingPPJB, housing_unit_id: ppjbUnitId || undefined });
+      const { consumer, housingUnit, id: _ppjbId, ...rest } = editingPPJB;
+      const leadId = editingPPJB.lead_id ?? dealLeadsWithConsumer.find((x) => x.consumer_id === editingPPJB.consumer_id)?.id;
+      await updatePPJB(editingPPJB.id, {
+        ...rest,
+        lead_id: leadId || undefined,
+        housing_unit_id: ppjbUnitId || undefined,
+      });
       setEditingPPJB(null);
     } catch { /* hook shows toast */ }
   };
@@ -179,10 +221,14 @@ export function Transaksi() {
   // ── Akad handlers ───────────────────────────────────────────────
   const handleAddAkad = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newAkad.lead_id) {
+      toast.error('Pilih konsumen (lead Deal yang sudah punya data konsumen).');
+      return;
+    }
     try {
       await createAkad({
         nomor_akad: newAkad.nomor_akad,
-        consumer_id: newAkad.consumer_id || undefined,
+        lead_id: newAkad.lead_id,
         housing_unit_id: akadUnitId || undefined,
         tanggal_akad: newAkad.tanggal_akad,
         bank: newAkad.bank || undefined,
@@ -200,7 +246,13 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingAkad?.id) return;
     try {
-      await updateAkad(editingAkad.id, { ...editingAkad, housing_unit_id: akadUnitId || undefined });
+      const { consumer, housingUnit, id: _akadId, ...rest } = editingAkad;
+      const leadId = editingAkad.lead_id ?? dealLeadsWithConsumer.find((x) => x.consumer_id === editingAkad.consumer_id)?.id;
+      await updateAkad(editingAkad.id, {
+        ...rest,
+        lead_id: leadId || undefined,
+        housing_unit_id: akadUnitId || undefined,
+      });
       setEditingAkad(null);
     } catch { /* hook shows toast */ }
   };
@@ -214,10 +266,14 @@ export function Transaksi() {
   // ── BAST handlers ──────────────────────────────────────────────
   const handleAddBAST = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newBAST.lead_id) {
+      toast.error('Pilih konsumen (lead Deal yang sudah punya data konsumen).');
+      return;
+    }
     try {
       await createBAST({
         nomor_bast: newBAST.nomor_bast,
-        consumer_id: newBAST.consumer_id || undefined,
+        lead_id: newBAST.lead_id,
         housing_unit_id: bastUnitId || undefined,
         tanggal_bast: newBAST.tanggal_bast,
         status: newBAST.status,
@@ -233,7 +289,13 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingBAST?.id) return;
     try {
-      await updateBAST(editingBAST.id, { ...editingBAST, housing_unit_id: bastUnitId || undefined });
+      const { consumer, housingUnit, id: _bastId, ...rest } = editingBAST;
+      const leadId = editingBAST.lead_id ?? dealLeadsWithConsumer.find((x) => x.consumer_id === editingBAST.consumer_id)?.id;
+      await updateBAST(editingBAST.id, {
+        ...rest,
+        lead_id: leadId || undefined,
+        housing_unit_id: bastUnitId || undefined,
+      });
       setEditingBAST(null);
     } catch { /* hook shows toast */ }
   };
@@ -247,9 +309,13 @@ export function Transaksi() {
   // ── Pindah Unit handlers ────────────────────────────────────────
   const handleAddPindah = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newPindah.lead_id) {
+      toast.error('Pilih konsumen (lead Deal yang sudah punya data konsumen).');
+      return;
+    }
     try {
       await createPindah({
-        consumer_id: newPindah.consumer_id || undefined,
+        lead_id: newPindah.lead_id,
         housing_unit_id_lama: pindahUnitLama || undefined,
         housing_unit_id_baru: pindahUnitBaru || undefined,
         tanggal_pindah: newPindah.tanggal_pindah,
@@ -267,8 +333,11 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingPindah?.id) return;
     try {
+      const { consumer, housingUnitLama, housingUnitBaru, id: _pindahId, ...rest } = editingPindah;
+      const leadId = editingPindah.lead_id ?? dealLeadsWithConsumer.find((x) => x.consumer_id === editingPindah.consumer_id)?.id;
       await updatePindah(editingPindah.id, {
-        ...editingPindah,
+        ...rest,
+        lead_id: leadId || undefined,
         housing_unit_id_lama: pindahUnitLama || undefined,
         housing_unit_id_baru: pindahUnitBaru || undefined,
       });
@@ -285,9 +354,13 @@ export function Transaksi() {
   // ── Pembatalan handlers ─────────────────────────────────────────
   const handleAddPembatalan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newPembatalan.lead_id) {
+      toast.error('Pilih konsumen (lead Deal yang sudah punya data konsumen).');
+      return;
+    }
     try {
       await createPembatalan({
-        consumer_id: newPembatalan.consumer_id || undefined,
+        lead_id: newPembatalan.lead_id,
         housing_unit_id: pembatalanUnitId || undefined,
         tanggal_batal: newPembatalan.tanggal_batal,
         alasan: newPembatalan.alasan,
@@ -304,7 +377,13 @@ export function Transaksi() {
     e.preventDefault();
     if (!editingPembatalan?.id) return;
     try {
-      await updatePembatalan(editingPembatalan.id, { ...editingPembatalan, housing_unit_id: pembatalanUnitId || undefined });
+      const { consumer, housingUnit, id: _pembId, ...rest } = editingPembatalan;
+      const leadId = editingPembatalan.lead_id ?? dealLeadsWithConsumer.find((x) => x.consumer_id === editingPembatalan.consumer_id)?.id;
+      await updatePembatalan(editingPembatalan.id, {
+        ...rest,
+        lead_id: leadId || undefined,
+        housing_unit_id: pembatalanUnitId || undefined,
+      });
       setEditingPembatalan(null);
     } catch { /* hook shows toast */ }
   };
@@ -773,8 +852,19 @@ export function Transaksi() {
                 <input required type="date" value={newPPJB.tanggal_ppjb} onChange={(e) => setNewPPJB({ ...newPPJB, tanggal_ppjb: e.target.value })} className={inputCls} />
               </Field>
             </div>
-            <Field label="Consumer ID">
-              <input value={newPPJB.consumer_id} onChange={(e) => setNewPPJB({ ...newPPJB, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            <Field label="Konsumen (lead Deal)" required>
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={newPPJB.lead_id}
+                required
+                onChange={(leadId, lead) => {
+                  setNewPPJB({ ...newPPJB, lead_id: leadId });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setPpjbProjectId(lead.housingUnit.project_id);
+                    setPpjbUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -822,8 +912,22 @@ export function Transaksi() {
                 <input required type="date" value={editingPPJB.tanggal_ppjb ?? ''} onChange={(e) => setEditingPPJB({ ...editingPPJB, tanggal_ppjb: e.target.value })} className={inputCls} />
               </Field>
             </div>
-            <Field label="Consumer ID">
-              <input value={editingPPJB.consumer_id ?? ''} onChange={(e) => setEditingPPJB({ ...editingPPJB, consumer_id: e.target.value })} className={inputCls} />
+            <Field label="Konsumen (lead Deal)">
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={editingPPJB.lead_id ?? dealLeadsWithConsumer.find((l) => l.consumer_id === editingPPJB.consumer_id)?.id ?? ''}
+                onChange={(leadId, lead) => {
+                  setEditingPPJB({
+                    ...editingPPJB,
+                    lead_id: leadId,
+                    consumer_id: lead?.consumer_id,
+                  });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setPpjbProjectId(lead.housingUnit.project_id);
+                    setPpjbUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -871,8 +975,19 @@ export function Transaksi() {
                 <input required type="date" value={newAkad.tanggal_akad} onChange={(e) => setNewAkad({ ...newAkad, tanggal_akad: e.target.value })} className={inputCls} />
               </Field>
             </div>
-            <Field label="Consumer ID">
-              <input value={newAkad.consumer_id} onChange={(e) => setNewAkad({ ...newAkad, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            <Field label="Konsumen (lead Deal)" required>
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={newAkad.lead_id}
+                required
+                onChange={(leadId, lead) => {
+                  setNewAkad({ ...newAkad, lead_id: leadId });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setAkadProjectId(lead.housingUnit.project_id);
+                    setAkadUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -923,8 +1038,22 @@ export function Transaksi() {
                 <input required type="date" value={editingAkad.tanggal_akad ?? ''} onChange={(e) => setEditingAkad({ ...editingAkad, tanggal_akad: e.target.value })} className={inputCls} />
               </Field>
             </div>
-            <Field label="Consumer ID">
-              <input value={editingAkad.consumer_id ?? ''} onChange={(e) => setEditingAkad({ ...editingAkad, consumer_id: e.target.value })} className={inputCls} />
+            <Field label="Konsumen (lead Deal)">
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={editingAkad.lead_id ?? dealLeadsWithConsumer.find((l) => l.consumer_id === editingAkad.consumer_id)?.id ?? ''}
+                onChange={(leadId, lead) => {
+                  setEditingAkad({
+                    ...editingAkad,
+                    lead_id: leadId,
+                    consumer_id: lead?.consumer_id,
+                  });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setAkadProjectId(lead.housingUnit.project_id);
+                    setAkadUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -975,8 +1104,19 @@ export function Transaksi() {
                 <input required type="date" value={newBAST.tanggal_bast} onChange={(e) => setNewBAST({ ...newBAST, tanggal_bast: e.target.value })} className={inputCls} />
               </Field>
             </div>
-            <Field label="Consumer ID">
-              <input value={newBAST.consumer_id} onChange={(e) => setNewBAST({ ...newBAST, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            <Field label="Konsumen (lead Deal)" required>
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={newBAST.lead_id}
+                required
+                onChange={(leadId, lead) => {
+                  setNewBAST({ ...newBAST, lead_id: leadId });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setBastProjectId(lead.housingUnit.project_id);
+                    setBastUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -1019,8 +1159,22 @@ export function Transaksi() {
                 <input required type="date" value={editingBAST.tanggal_bast ?? ''} onChange={(e) => setEditingBAST({ ...editingBAST, tanggal_bast: e.target.value })} className={inputCls} />
               </Field>
             </div>
-            <Field label="Consumer ID">
-              <input value={editingBAST.consumer_id ?? ''} onChange={(e) => setEditingBAST({ ...editingBAST, consumer_id: e.target.value })} className={inputCls} />
+            <Field label="Konsumen (lead Deal)">
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={editingBAST.lead_id ?? dealLeadsWithConsumer.find((l) => l.consumer_id === editingBAST.consumer_id)?.id ?? ''}
+                onChange={(leadId, lead) => {
+                  setEditingBAST({
+                    ...editingBAST,
+                    lead_id: leadId,
+                    consumer_id: lead?.consumer_id,
+                  });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setBastProjectId(lead.housingUnit.project_id);
+                    setBastUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -1055,8 +1209,13 @@ export function Transaksi() {
       {isAddPindahOpen && (
         <ModalWrapper title="Tambah Pindah Unit" onClose={() => setIsAddPindahOpen(false)}>
           <form onSubmit={handleAddPindah} className="p-6 space-y-4">
-            <Field label="Consumer ID">
-              <input value={newPindah.consumer_id} onChange={(e) => setNewPindah({ ...newPindah, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            <Field label="Konsumen (lead Deal)" required>
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={newPindah.lead_id}
+                required
+                onChange={(leadId) => setNewPindah({ ...newPindah, lead_id: leadId })}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek (Unit Lama)">
@@ -1113,8 +1272,18 @@ export function Transaksi() {
       {editingPindah && (
         <ModalWrapper title="Edit Pindah Unit" onClose={() => setEditingPindah(null)}>
           <form onSubmit={handleUpdatePindah} className="p-6 space-y-4">
-            <Field label="Consumer ID">
-              <input value={editingPindah.consumer_id ?? ''} onChange={(e) => setEditingPindah({ ...editingPindah, consumer_id: e.target.value })} className={inputCls} />
+            <Field label="Konsumen (lead Deal)">
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={editingPindah.lead_id ?? dealLeadsWithConsumer.find((l) => l.consumer_id === editingPindah.consumer_id)?.id ?? ''}
+                onChange={(leadId, lead) => {
+                  setEditingPindah({
+                    ...editingPindah,
+                    lead_id: leadId,
+                    consumer_id: lead?.consumer_id,
+                  });
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek (Unit Lama)">
@@ -1171,8 +1340,19 @@ export function Transaksi() {
       {isAddPembatalanOpen && (
         <ModalWrapper title="Tambah Pembatalan" onClose={() => setIsAddPembatalanOpen(false)}>
           <form onSubmit={handleAddPembatalan} className="p-6 space-y-4">
-            <Field label="Consumer ID">
-              <input value={newPembatalan.consumer_id} onChange={(e) => setNewPembatalan({ ...newPembatalan, consumer_id: e.target.value })} className={inputCls} placeholder="ID konsumen" />
+            <Field label="Konsumen (lead Deal)" required>
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={newPembatalan.lead_id}
+                required
+                onChange={(leadId, lead) => {
+                  setNewPembatalan({ ...newPembatalan, lead_id: leadId });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setPembatalanProjectId(lead.housingUnit.project_id);
+                    setPembatalanUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -1214,8 +1394,22 @@ export function Transaksi() {
       {editingPembatalan && (
         <ModalWrapper title="Edit Pembatalan" onClose={() => setEditingPembatalan(null)}>
           <form onSubmit={handleUpdatePembatalan} className="p-6 space-y-4">
-            <Field label="Consumer ID">
-              <input value={editingPembatalan.consumer_id ?? ''} onChange={(e) => setEditingPembatalan({ ...editingPembatalan, consumer_id: e.target.value })} className={inputCls} />
+            <Field label="Konsumen (lead Deal)">
+              <LeadDealSelect
+                leads={dealLeadsWithConsumer}
+                value={editingPembatalan.lead_id ?? dealLeadsWithConsumer.find((l) => l.consumer_id === editingPembatalan.consumer_id)?.id ?? ''}
+                onChange={(leadId, lead) => {
+                  setEditingPembatalan({
+                    ...editingPembatalan,
+                    lead_id: leadId,
+                    consumer_id: lead?.consumer_id,
+                  });
+                  if (lead?.housing_unit_id && lead.housingUnit?.project_id) {
+                    setPembatalanProjectId(lead.housingUnit.project_id);
+                    setPembatalanUnitId(lead.housing_unit_id);
+                  }
+                }}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Proyek">
@@ -1259,6 +1453,38 @@ export function Transaksi() {
 // ══════════════════════════════════════════════════════════════════
 // Shared sub-components (local to this file)
 // ══════════════════════════════════════════════════════════════════
+
+function LeadDealSelect({
+  leads,
+  value,
+  onChange,
+  required,
+}: {
+  leads: Lead[];
+  value: string;
+  onChange: (leadId: string, lead?: Lead) => void;
+  required?: boolean;
+}) {
+  return (
+    <select
+      required={required}
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v, leads.find((l) => l.id === v));
+      }}
+      className={inputCls}
+    >
+      <option value="">Pilih lead Deal (sudah ada konsumen)...</option>
+      {leads.map((l) => (
+        <option key={l.id} value={l.id}>
+          {l.name}
+          {l.housingUnit?.unit_code ? ` — ${l.housingUnit.unit_code}` : ''}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function ModalWrapper({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (

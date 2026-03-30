@@ -12,9 +12,10 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useConfirmDialog, useConsumers, useTransactions } from '../../hooks';
+import { useConfirmDialog, useConsumers, useProjects, useTransactions } from '../../hooks';
 import { formatRupiah, getErrorMessage } from '../../lib/utils';
 import { financeService } from '../../services';
+import { housingService } from '../../services/housing.service';
 import { marketingService } from '../../services/marketing.service';
 import type { CreateConsumerPayload, CreateTransactionPayload, Lead } from '../../types';
 import { FinanceDetail } from '../components/FinanceDetail';
@@ -50,6 +51,27 @@ export function Finance() {
   });
   const [addTransactionSubmitting, setAddTransactionSubmitting] = useState(false);
   const [editingPayment, setEditingPayment] = useState<{ consumerId: string; consumerName: string; payment: any } | null>(null);
+
+  // ── Cascading project → unit untuk form Dana Masuk/Keluar ────────────
+  const { projects } = useProjects();
+  const [txProjectId, setTxProjectId] = useState('');
+  const [txUnitCode, setTxUnitCode] = useState('');
+  const [txProjectUnits, setTxProjectUnits] = useState<{ unit_code: string }[]>([]);
+  const [txUnitsLoading, setTxUnitsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!txProjectId) { setTxProjectUnits([]); setTxUnitCode(''); return; }
+    let cancelled = false;
+    setTxUnitsLoading(true);
+    void housingService.getAll({ project_id: txProjectId, limit: 500, page: 1 }).then((r) => {
+      if (!cancelled) { setTxProjectUnits(r.data ?? []); setTxUnitCode(''); }
+    }).catch(() => {
+      if (!cancelled) setTxProjectUnits([]);
+    }).finally(() => { if (!cancelled) setTxUnitsLoading(false); });
+    return () => { cancelled = true; };
+  }, [txProjectId]);
+
+  const resetTxProjectUnit = () => { setTxProjectId(''); setTxUnitCode(''); setTxProjectUnits([]); };
 
   /** Piutang dari lead Deal: isian form + dropdown */
   const [dealLeadsForFinance, setDealLeadsForFinance] = useState<Lead[]>([]);
@@ -335,7 +357,7 @@ export function Finance() {
         description: formData.get('description') as string,
         amount: Number(formData.get('amount')),
         payment_method: formData.get('payment_method') as string,
-        reference_no: formData.get('reference_no') as string,
+        reference_no: txUnitCode || (formData.get('reference_no') as string) || undefined,
       };
 
       try {
@@ -353,6 +375,7 @@ export function Finance() {
         description: formData.get('description') as string,
         amount: Number(formData.get('amount')),
         payment_method: (formData.get('payment_method') as string) || undefined,
+        reference_no: txUnitCode || undefined,
       };
 
       try {
@@ -366,6 +389,7 @@ export function Finance() {
 
     setShowModal(false);
     setEditingItem(null);
+    resetTxProjectUnit();
   };
 
   const handleAddTransactionSubmit = async (e: React.FormEvent) => {
@@ -658,7 +682,7 @@ export function Finance() {
                   modalType === 'expense' ? 'Dana Keluar' : 'Data Konsumen'
                 }
               </h3>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setShowModal(false); resetTxProjectUnit(); }} className="text-gray-400 hover:text-gray-600">
                 <X size={24} />
               </button>
             </div>
@@ -666,31 +690,87 @@ export function Finance() {
               <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
                 {modalType === 'income' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Referensi / Blok</label>
-                      <input name="reference_no" defaultValue={editingItem?.reference_no} type="text" placeholder="Contoh: A-01" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                    {/* Baris 1: Pilih Project */}
+                    <div className="md:col-span-2 space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Project</label>
+                      <select
+                        value={txProjectId}
+                        onChange={(e) => setTxProjectId(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm"
+                      >
+                        <option value="">— Pilih Project (opsional) —</option>
+                        {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
                     </div>
+                    {/* Baris 2: Pilih Blok/Unit (muncul setelah project dipilih) */}
+                    {txProjectId && (
+                      <div className="md:col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase">Blok / Unit</label>
+                        <select
+                          value={txUnitCode}
+                          onChange={(e) => setTxUnitCode(e.target.value)}
+                          disabled={txUnitsLoading}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm disabled:opacity-60"
+                        >
+                          <option value="">{txUnitsLoading ? 'Memuat unit...' : '— Pilih Blok/Unit —'}</option>
+                          {txProjectUnits.map((u) => <option key={u.unit_code} value={u.unit_code}>{u.unit_code}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    {/* Jika tidak pilih project, tetap bisa isi manual */}
+                    {!txProjectId && (
+                      <div className="md:col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase">Referensi / Blok (manual)</label>
+                        <input name="reference_no" defaultValue={editingItem?.reference_no} type="text" placeholder="Contoh: A-01" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-500 uppercase">Tanggal</label>
                       <input name="transaction_date" defaultValue={editingItem?.transaction_date} required type="date" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Metode Pembayaran</label>
+                      <input name="payment_method" defaultValue={editingItem?.payment_method} type="text" placeholder="BCA / Mandiri / Cash" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                     </div>
                     <div className="md:col-span-2 space-y-1">
                       <label className="text-xs font-bold text-gray-500 uppercase">Keterangan</label>
                       <input name="description" defaultValue={editingItem?.description} required type="text" placeholder="Deskripsi pembayaran" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                     </div>
-                    <div className="space-y-1">
+                    <div className="md:col-span-2 space-y-1">
                       <label className="text-xs font-bold text-gray-500 uppercase">Jumlah (IDR)</label>
                       <input name="amount" defaultValue={editingItem?.amount} required type="number" placeholder="0" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Metode Pembayaran</label>
-                      <input name="payment_method" defaultValue={editingItem?.payment_method} type="text" placeholder="BCA / Mandiri / Cash" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                     </div>
                   </div>
                 )}
 
                 {modalType === 'expense' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Cascading project → unit */}
+                    <div className="md:col-span-2 space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Project</label>
+                      <select
+                        value={txProjectId}
+                        onChange={(e) => setTxProjectId(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm"
+                      >
+                        <option value="">— Pilih Project (opsional) —</option>
+                        {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    {txProjectId && (
+                      <div className="md:col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase">Blok / Unit</label>
+                        <select
+                          value={txUnitCode}
+                          onChange={(e) => setTxUnitCode(e.target.value)}
+                          disabled={txUnitsLoading}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm disabled:opacity-60"
+                        >
+                          <option value="">{txUnitsLoading ? 'Memuat unit...' : '— Pilih Blok/Unit —'}</option>
+                          {txProjectUnits.map((u) => <option key={u.unit_code} value={u.unit_code}>{u.unit_code}</option>)}
+                        </select>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-500 uppercase">Tanggal</label>
                       <input name="transaction_date" defaultValue={editingItem?.transaction_date} required type="date" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
@@ -766,7 +846,12 @@ export function Finance() {
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <label className="text-xs font-bold text-gray-500 uppercase">Skema Pembayaran</label>
-                      <input name="payment_scheme" required type="text" placeholder="Contoh: Cash Bertahap / KPR" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                      <select name="payment_scheme" required className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white">
+                        <option value="">— Pilih Skema Pembayaran —</option>
+                        <option value="Cash Keras">Cash Keras</option>
+                        <option value="Cash Bertahap">Cash Bertahap</option>
+                        <option value="KPR Bank">KPR Bank</option>
+                      </select>
                     </div>
                   </div>
                 )}
