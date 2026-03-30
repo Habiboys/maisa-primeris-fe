@@ -55,23 +55,27 @@ export function Finance() {
   // ── Cascading project → unit untuk form Dana Masuk/Keluar ────────────
   const { projects } = useProjects();
   const [txProjectId, setTxProjectId] = useState('');
-  const [txUnitCode, setTxUnitCode] = useState('');
-  const [txProjectUnits, setTxProjectUnits] = useState<{ unit_code: string }[]>([]);
+  const [txUnitId, setTxUnitId] = useState('');
+  const [txProjectUnits, setTxProjectUnits] = useState<{ id: string; unit_code: string }[]>([]);
   const [txUnitsLoading, setTxUnitsLoading] = useState(false);
 
   useEffect(() => {
-    if (!txProjectId) { setTxProjectUnits([]); setTxUnitCode(''); return; }
+    if (!txProjectId) { setTxProjectUnits([]); setTxUnitId(''); return; }
     let cancelled = false;
     setTxUnitsLoading(true);
     void housingService.getAll({ project_id: txProjectId, limit: 500, page: 1 }).then((r) => {
-      if (!cancelled) { setTxProjectUnits(r.data ?? []); setTxUnitCode(''); }
+      if (!cancelled) {
+        const newUnits = r.data ?? [];
+        setTxProjectUnits(newUnits);
+        setTxUnitId(prev => (newUnits.some((u: any) => u.id === prev) ? prev : ''));
+      }
     }).catch(() => {
       if (!cancelled) setTxProjectUnits([]);
     }).finally(() => { if (!cancelled) setTxUnitsLoading(false); });
     return () => { cancelled = true; };
   }, [txProjectId]);
 
-  const resetTxProjectUnit = () => { setTxProjectId(''); setTxUnitCode(''); setTxProjectUnits([]); };
+  const resetTxProjectUnit = () => { setTxProjectId(''); setTxUnitId(''); setTxProjectUnits([]); };
 
   /** Piutang dari lead Deal: isian form + dropdown */
   const [dealLeadsForFinance, setDealLeadsForFinance] = useState<Lead[]>([]);
@@ -162,6 +166,7 @@ export function Finance() {
   const danaMasuk = transactions
     .filter((t) => t.type === 'Pemasukan')
     .map((t, i) => ({
+      ...t,
       no: i + 1,
       id: t.id,
       blok: t.reference_no || '-',
@@ -174,11 +179,14 @@ export function Finance() {
   const danaKeluar = transactions
     .filter((t) => t.type === 'Pengeluaran')
     .map((t, i) => ({
+      ...t,
       no: i + 1,
       id: t.id,
+      blok: t.reference_no || '-',
       tanggal: t.transaction_date,
       keterangan: t.description,
       jumlah: t.amount,
+      noRek: t.payment_method || '-',
     }));
 
   const piutangList = consumers;
@@ -225,16 +233,20 @@ export function Finance() {
     const q = searchQuery.trim().toLowerCase();
     const filtered = q
       ? danaKeluar.filter((item) =>
-          String(item.tanggal ?? '').toLowerCase().includes(q)
+          String(item.blok ?? '').toLowerCase().includes(q)
+          || String(item.tanggal ?? '').toLowerCase().includes(q)
           || String(item.keterangan ?? '').toLowerCase().includes(q)
-          || String(item.jumlah ?? '').toLowerCase().includes(q),
+          || String(item.jumlah ?? '').toLowerCase().includes(q)
+          || String(item.noRek ?? '').toLowerCase().includes(q),
         )
       : danaKeluar;
 
     return applySort(filtered, sortOut, {
+      blok: (item) => item.blok,
       tanggal: (item) => item.tanggal,
       keterangan: (item) => item.keterangan,
       jumlah: (item) => item.jumlah,
+      noRek: (item) => item.noRek,
     });
   }, [danaKeluar, searchQuery, sortOut]);
 
@@ -350,6 +362,7 @@ export function Finance() {
         setReceivableLinkedLeadId(null);
       } catch { /* error handled in hook */ }
     } else if (modalType === 'income') {
+      const selectedUnit = txProjectUnits.find((u) => u.id === txUnitId);
       const payload: CreateTransactionPayload = {
         transaction_date: formData.get('transaction_date') as string,
         type: 'Pemasukan',
@@ -357,7 +370,9 @@ export function Finance() {
         description: formData.get('description') as string,
         amount: Number(formData.get('amount')),
         payment_method: formData.get('payment_method') as string,
-        reference_no: txUnitCode || (formData.get('reference_no') as string) || undefined,
+        reference_no: selectedUnit ? selectedUnit.unit_code : ((formData.get('reference_no') as string) || undefined),
+        project_id: txProjectId || undefined,
+        housing_unit_id: txUnitId || undefined,
       };
 
       try {
@@ -368,6 +383,7 @@ export function Finance() {
         }
       } catch { /* error handled in hook */ }
     } else if (modalType === 'expense') {
+      const selectedUnit = txProjectUnits.find((u) => u.id === txUnitId);
       const payload: CreateTransactionPayload = {
         transaction_date: formData.get('transaction_date') as string,
         type: 'Pengeluaran',
@@ -375,7 +391,9 @@ export function Finance() {
         description: formData.get('description') as string,
         amount: Number(formData.get('amount')),
         payment_method: (formData.get('payment_method') as string) || undefined,
-        reference_no: txUnitCode || undefined,
+        reference_no: selectedUnit ? selectedUnit.unit_code : ((formData.get('reference_no') as string) || undefined),
+        project_id: txProjectId || undefined,
+        housing_unit_id: txUnitId || undefined,
       };
 
       try {
@@ -581,6 +599,8 @@ export function Finance() {
                           onClick={() => {
                             setModalType('income');
                             setEditingItem(item);
+                            setTxProjectId(item.project_id || '');
+                            setTxUnitId(item.housing_unit_id || '');
                             setShowModal(true);
                           }}
                           className="p-2 text-gray-400 hover:text-primary transition-colors"
@@ -611,9 +631,11 @@ export function Finance() {
               <thead>
                 <tr className="bg-gray-50 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
                   <th className="px-6 py-4">No</th>
+                  <SortableHeader label="Blok" sortKey="blok" activeSort={sortOut} onSort={(key) => toggleSort(setSortOut, key)} />
                   <SortableHeader label="Tanggal" sortKey="tanggal" activeSort={sortOut} onSort={(key) => toggleSort(setSortOut, key)} />
                   <SortableHeader label="Keterangan" sortKey="keterangan" activeSort={sortOut} onSort={(key) => toggleSort(setSortOut, key)} />
                   <SortableHeader label="Jumlah" sortKey="jumlah" align="right" activeSort={sortOut} onSort={(key) => toggleSort(setSortOut, key)} />
+                  <SortableHeader label="No Rek" sortKey="noRek" activeSort={sortOut} onSort={(key) => toggleSort(setSortOut, key)} />
                   <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -621,15 +643,19 @@ export function Finance() {
                 {pagedDanaKeluar.map((item, idx) => (
                   <tr key={item.id ?? `${item.no}-${item.tanggal}-${idx}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-500">{(currentPage - 1) * perPage + idx + 1}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-primary">{item.blok}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{item.tanggal}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{item.keterangan}</td>
                     <td className="px-6 py-4 text-sm font-bold text-red-600 text-right">{formatRupiah(item.jumlah)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{item.noRek}</td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button 
                           onClick={() => {
                             setModalType('expense');
                             setEditingItem(item);
+                            setTxProjectId(item.project_id || '');
+                            setTxUnitId(item.housing_unit_id || '');
                             setShowModal(true);
                           }}
                           className="p-2 text-gray-400 hover:text-primary transition-colors"
@@ -648,7 +674,7 @@ export function Finance() {
                 ))}
                 {pagedDanaKeluar.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400">Tidak ada data dana keluar.</td>
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">Tidak ada data dana keluar.</td>
                   </tr>
                 )}
               </tbody>
@@ -692,36 +718,36 @@ export function Finance() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Baris 1: Pilih Project */}
                     <div className="md:col-span-2 space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Project</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase">Project (Opsional)</label>
                       <select
                         value={txProjectId}
                         onChange={(e) => setTxProjectId(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm"
                       >
-                        <option value="">— Pilih Project (opsional) —</option>
+                        <option value="">— Tidak Terkait Project / Unit —</option>
                         {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                     </div>
                     {/* Baris 2: Pilih Blok/Unit (muncul setelah project dipilih) */}
                     {txProjectId && (
                       <div className="md:col-span-2 space-y-1">
-                        <label className="text-xs font-bold text-gray-500 uppercase">Blok / Unit</label>
+                        <label className="text-xs font-bold text-gray-500 uppercase">Blok / Unit (Opsional)</label>
                         <select
-                          value={txUnitCode}
-                          onChange={(e) => setTxUnitCode(e.target.value)}
+                          value={txUnitId}
+                          onChange={(e) => setTxUnitId(e.target.value)}
                           disabled={txUnitsLoading}
                           className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm disabled:opacity-60"
                         >
                           <option value="">{txUnitsLoading ? 'Memuat unit...' : '— Pilih Blok/Unit —'}</option>
-                          {txProjectUnits.map((u) => <option key={u.unit_code} value={u.unit_code}>{u.unit_code}</option>)}
+                          {txProjectUnits.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
                         </select>
                       </div>
                     )}
                     {/* Jika tidak pilih project, tetap bisa isi manual */}
                     {!txProjectId && (
                       <div className="md:col-span-2 space-y-1">
-                        <label className="text-xs font-bold text-gray-500 uppercase">Referensi / Blok (manual)</label>
-                        <input name="reference_no" defaultValue={editingItem?.reference_no} type="text" placeholder="Contoh: A-01" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                        <label className="text-xs font-bold text-gray-500 uppercase">No. Referensi (Opsional)</label>
+                        <input name="reference_no" defaultValue={editingItem?.reference_no} type="text" placeholder="Contoh: INV-001 (Opsional)" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                       </div>
                     )}
                     <div className="space-y-1">
@@ -747,28 +773,34 @@ export function Finance() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Cascading project → unit */}
                     <div className="md:col-span-2 space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Project</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase">Project (Opsional)</label>
                       <select
                         value={txProjectId}
                         onChange={(e) => setTxProjectId(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm"
                       >
-                        <option value="">— Pilih Project (opsional) —</option>
+                        <option value="">— Tidak Terkait Project / Unit —</option>
                         {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                     </div>
                     {txProjectId && (
                       <div className="md:col-span-2 space-y-1">
-                        <label className="text-xs font-bold text-gray-500 uppercase">Blok / Unit</label>
+                        <label className="text-xs font-bold text-gray-500 uppercase">Blok / Unit (Opsional)</label>
                         <select
-                          value={txUnitCode}
-                          onChange={(e) => setTxUnitCode(e.target.value)}
+                          value={txUnitId}
+                          onChange={(e) => setTxUnitId(e.target.value)}
                           disabled={txUnitsLoading}
                           className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white text-sm disabled:opacity-60"
                         >
                           <option value="">{txUnitsLoading ? 'Memuat unit...' : '— Pilih Blok/Unit —'}</option>
-                          {txProjectUnits.map((u) => <option key={u.unit_code} value={u.unit_code}>{u.unit_code}</option>)}
+                          {txProjectUnits.map((u) => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
                         </select>
+                      </div>
+                    )}
+                    {!txProjectId && (
+                      <div className="md:col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase">No. Referensi (Opsional)</label>
+                        <input name="reference_no" defaultValue={editingItem?.reference_no} type="text" placeholder="Contoh: INV-001 (Opsional)" className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
                       </div>
                     )}
                     <div className="space-y-1">

@@ -165,7 +165,9 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [projectFilterId, setProjectFilterId] = useState<string>("");
-  const { units, isLoading, create, update, remove } = useHousingUnits(undefined, { limit: 500, project_id: projectFilterId || undefined });
+  const [housingPage, setHousingPage] = useState(1);
+  const [housingPerPage, setHousingPerPage] = useState(10);
+  const { units, isLoading, pagination: housingPagination, create, update, remove } = useHousingUnits(searchQuery || undefined, { limit: housingPerPage, page: housingPage, project_id: projectFilterId || undefined });
   const { projects } = useProjects();
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
 
@@ -225,15 +227,10 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
   const filteredUnits = useMemo(() => {
     if (!units) return [];
     return units.filter((u: HousingUnit) => {
-      const q = searchQuery.toLowerCase();
-      const matchSearch =
-        !q ||
-        u.unit_code.toLowerCase().includes(q) ||
-        (u.unit_type?.toLowerCase().includes(q) ?? false);
       const matchStatus = !statusFilter || u.status === statusFilter;
-      return matchSearch && matchStatus;
+      return matchStatus;
     });
-  }, [units, searchQuery, statusFilter]);
+  }, [units, statusFilter]);
 
   // ─── Stats ──────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -464,14 +461,14 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
             type="text"
             placeholder="Cari no. kavling atau tipe rumah..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setHousingPage(1); }}
             className="w-full pl-10 pr-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="relative">
           <select
             value={projectFilterId}
-            onChange={(e) => setProjectFilterId(e.target.value)}
+            onChange={(e) => { setProjectFilterId(e.target.value); setHousingPage(1); }}
             className="appearance-none bg-white border rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px]"
           >
             <option value="">Semua Proyek</option>
@@ -613,6 +610,42 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
             </tbody>
           </table>
         </div>
+        {housingPagination && housingPagination.total_pages > 0 && (
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4 text-sm">
+            <div className="flex items-center gap-4">
+              <span className="text-gray-600 font-medium">
+                Halaman {housingPagination.page} dari {housingPagination.total_pages} ({housingPagination.total} data)
+              </span>
+              <select
+                value={housingPerPage}
+                onChange={(e) => { setHousingPerPage(Number(e.target.value)); setHousingPage(1); }}
+                className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg font-medium text-gray-700 focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value={10}>10 per halaman</option>
+                <option value={20}>20 per halaman</option>
+                <option value={50}>50 per halaman</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={housingPagination.page <= 1}
+                onClick={() => setHousingPage((p) => Math.max(1, p - 1))}
+                className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Sebelumnya
+              </button>
+              <button
+                type="button"
+                disabled={housingPagination.page >= housingPagination.total_pages}
+                onClick={() => setHousingPage((p) => Math.min(housingPagination.total_pages, p + 1))}
+                className="px-4 py-2 rounded-lg font-bold border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Selanjutnya
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Add / Edit Modal (style ala Mentahan/Figma) ───────────── */}

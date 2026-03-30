@@ -21,6 +21,8 @@ import { useConfirmDialog, useConstructionStatuses, useDepartments, useHousingUn
 import { formatDateId } from '../../lib/date';
 import { formatRupiah } from '../../lib/utils';
 import { housingService } from '../../services';
+import { departmentService } from '../../services/department.service';
+import { materialService } from '../../services/material.service';
 import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit, UnitBlockRange } from '../../types';
 
 function totalUnitsFromBlockRows(rows: Array<{ prefix: string; start: string; end: string }>): number {
@@ -129,12 +131,11 @@ export function DataMaster() {
     if (isSavingDept) return;
     setIsSavingDept(true);
     try {
-      const { departmentService: deptSvc } = await import('../../services/department.service');
       if (editingDept) {
-        await deptSvc.update(editingDept.id, { name: deptForm.name, description: deptForm.description || undefined });
+        await departmentService.update(editingDept.id, { name: deptForm.name, description: deptForm.description || undefined });
         toast.success('Divisi berhasil diperbarui');
       } else {
-        await deptSvc.create({ name: deptForm.name, description: deptForm.description || undefined });
+        await departmentService.create({ name: deptForm.name, description: deptForm.description || undefined });
         toast.success('Divisi berhasil ditambahkan');
       }
       await refetchDepartments();
@@ -150,8 +151,7 @@ export function DataMaster() {
   const handleDeleteDept = async (id: string, name: string) => {
     if (!(await showConfirm({ title: 'Hapus Divisi', description: `Hapus "${name}"?` }))) return;
     try {
-      const { departmentService: deptSvc } = await import('../../services/department.service');
-      await deptSvc.delete(id);
+      await departmentService.delete(id);
       toast.success('Divisi berhasil dihapus');
       await refetchDepartments();
     } catch (e: any) {
@@ -171,12 +171,11 @@ export function DataMaster() {
     if (isSavingMaterial) return;
     setIsSavingMaterial(true);
     try {
-      const { materialService: matSvc } = await import('../../services/material.service');
       if (editingMaterial) {
-        await matSvc.update(editingMaterial.id, { name: materialForm.name, unit: materialForm.unit, notes: materialForm.notes || undefined });
+        await materialService.update(editingMaterial.id, { name: materialForm.name, unit: materialForm.unit, notes: materialForm.notes || undefined });
         toast.success('Material berhasil diperbarui');
       } else {
-        await matSvc.create({ name: materialForm.name, unit: materialForm.unit, notes: materialForm.notes || undefined });
+        await materialService.create({ name: materialForm.name, unit: materialForm.unit, notes: materialForm.notes || undefined });
         toast.success('Material berhasil ditambahkan');
       }
       await refetchMaterials();
@@ -192,8 +191,7 @@ export function DataMaster() {
   const handleDeleteMaterial = async (id: string, name: string) => {
     if (!(await showConfirm({ title: 'Hapus Material', description: `Hapus "${name}"?` }))) return;
     try {
-      const { materialService: matSvc } = await import('../../services/material.service');
-      await matSvc.delete(id);
+      await materialService.delete(id);
       toast.success('Material berhasil dihapus');
       await refetchMaterials();
     } catch (e: any) {

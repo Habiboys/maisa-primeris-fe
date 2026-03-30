@@ -280,7 +280,7 @@ export default function App() {
           { label: 'Template QC', path: '/data-master/qc-templates', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
           { label: 'Status Konstruksi', path: '/data-master/construction-statuses', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
           { label: 'Divisi / Departemen', path: '/data-master/departments', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
-          { label: 'Master Material', path: '/data-master/materials', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Material', path: '/data-master/materials', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
         ],
       },
       { id: 'finance', label: 'Finance & Accounting', icon: Wallet, path: '/finance', roles: ['Platform Owner', 'Super Admin', 'Finance'] },

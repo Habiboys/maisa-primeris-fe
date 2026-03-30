@@ -7,7 +7,7 @@ import type { UserRole } from '../../types';
 
 export function UserManagement() {
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
-  const { users, create, update, toggleStatus, remove } = useUsers();
+  const { users, isLoading, create, update, toggleStatus, remove } = useUsers();
   const { activityLogs } = useActivityLogs();
   const { user } = useAuth();
   const isPlatformOwner = user?.role === 'Platform Owner';
@@ -22,7 +22,6 @@ export function UserManagement() {
     name: '',
     email: '',
     role: 'Project Management' as UserRole,
-    password: '',
   });
   const [isSavingUser, setIsSavingUser] = useState(false);
 
@@ -43,13 +42,13 @@ export function UserManagement() {
 
   const handleOpenAddModal = () => {
     setEditingUser(null);
-    setFormData({ name: '', email: '', role: 'Project Management', password: '' });
+    setFormData({ name: '', email: '', role: 'Project Management' });
     setShowModal(true);
   };
 
   const handleOpenEditModal = (user: typeof users[0]) => {
     setEditingUser({ id: user.id, name: user.name, email: user.email, role: user.role });
-    setFormData({ name: user.name, email: user.email, role: user.role, password: '' });
+    setFormData({ name: user.name, email: user.email, role: user.role });
     setShowModal(true);
   };
 
@@ -62,9 +61,7 @@ export function UserManagement() {
     setIsSavingUser(true);
     try {
       if (editingUser) {
-        const payload: any = { name: formData.name, email: formData.email, role: formData.role };
-        if (formData.password.trim()) payload.password = formData.password.trim();
-        await update(editingUser.id, payload);
+        await update(editingUser.id, { name: formData.name, email: formData.email, role: formData.role });
       } else {
         await create({
           name: formData.name,
@@ -374,19 +371,6 @@ export function UserManagement() {
                   <option value="Finance">Finance</option>
                   <option value="Super Admin">Super Admin</option>
                 </select>
-              </div>
-              {/* Password field – opsional saat edit, wajib saat tambah */}
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">
-                  {editingUser ? 'Password Baru (opsional)' : 'Password'}
-                </label>
-                <input 
-                  type="password"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary outline-none transition-all" 
-                  placeholder={editingUser ? 'Kosongkan jika tidak ingin mengubah' : 'Min. 6 karakter'}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
               </div>
             </div>
             <div className="p-6 bg-gray-50 flex items-center justify-end gap-3">

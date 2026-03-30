@@ -26,6 +26,7 @@ export interface Transaction {
   reference_no?: string;
   attachment?: string;
   project_id?: string;
+  housing_unit_id?: string;
   created_by?: string;
   creator?: { id: string; name: string };
   created_at: string;
@@ -93,6 +94,7 @@ export interface CreateTransactionPayload {
   payment_method?: string;
   reference_no?: string;
   project_id?: string;
+  housing_unit_id?: string;
 }
 
 /** Payload pembuatan konsumen piutang — identitas & unit diisi server dari lead Deal */

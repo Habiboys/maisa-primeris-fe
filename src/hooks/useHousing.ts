@@ -14,9 +14,10 @@ import type { CreateHousingPaymentPayload, CreateHousingUnitPayload, HousingPaym
 
 // ── Hook housing units ────────────────────────────────────────────
 
-export function useHousingUnits(search?: string, options?: { limit?: number; project_id?: string }) {
+export function useHousingUnits(search?: string, options?: { limit?: number; page?: number; project_id?: string }) {
   const [units, setUnits] = useState<HousingUnit[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [pagination, setPagination] = useState<{ page: number; limit: number; total: number; total_pages: number } | null>(null);
 
   const fetchUnits = useCallback(async () => {
     setIsLoading(true);
@@ -25,12 +26,13 @@ export function useHousingUnits(search?: string, options?: { limit?: number; pro
         ...(search ? { search } : {}),
         ...(options?.project_id ? { project_id: options.project_id } : {}),
         limit: options?.limit ?? 20,
-        page: 1,
+        page: options?.page ?? 1,
       });
       setUnits(res.data ?? []);
+      setPagination(res.pagination ?? null);
     } catch (err) { toast.error(getErrorMessage(err)); }
     finally { setIsLoading(false); }
-  }, [search, options?.limit, options?.project_id]);
+  }, [search, options?.limit, options?.page, options?.project_id]);
 
   useEffect(() => { fetchUnits(); }, [fetchUnits]);
 
@@ -60,7 +62,7 @@ export function useHousingUnits(search?: string, options?: { limit?: number; pro
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { units, isLoading, refetch: fetchUnits, create, update, remove };
+  return { units, isLoading, pagination, refetch: fetchUnits, create, update, remove };
 }
 
 // ── Hook riwayat bayar unit ───────────────────────────────────────

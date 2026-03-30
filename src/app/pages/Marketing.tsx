@@ -114,6 +114,13 @@ export function Marketing() {
   const [siteplanProjectId, setSiteplanProjectId] = useState<string>('');
   const siteplanHousing = useHousingUnits(undefined, { limit: 500, project_id: siteplanProjectId || undefined });
 
+  // Auto-select proyek pertama untuk siteplan (tidak ada opsi "Semua Proyek")
+  useEffect(() => {
+    if (!siteplanProjectId && projects && projects.length > 0) {
+      setSiteplanProjectId(projects[0].id);
+    }
+  }, [projects, siteplanProjectId]);
+
   // Lead modal: Minat Unit = pilih proyek + unit
   const [newLeadProjectId, setNewLeadProjectId] = useState('');
   const [newLeadUnitId, setNewLeadUnitId] = useState('');
@@ -691,7 +698,6 @@ export function Marketing() {
                   onChange={(e) => setSiteplanProjectId(e.target.value)}
                   className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="">Semua Proyek</option>
                   {(projects ?? []).map((p: Project) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}

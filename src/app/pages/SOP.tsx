@@ -305,7 +305,6 @@ export const SOP: React.FC = () => {
       'Dikirim': 'bg-blue-50 text-blue-600',
       'Diajukan': 'bg-yellow-50 text-yellow-600',
       'Diterima': 'bg-green-50 text-green-600',
-      'Dikirim': 'bg-blue-50 text-blue-600',
       'Baik': 'bg-green-50 text-green-600',
       'Rusak Ringan': 'bg-yellow-50 text-yellow-600',
       'Rusak Berat': 'bg-red-50 text-red-600',
