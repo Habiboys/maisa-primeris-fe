@@ -56,6 +56,8 @@ export interface WorkLog {
   status: 'Normal' | 'Lembur' | 'Kendala';
   weather?: 'Cerah' | 'Berawan' | 'Hujan' | 'Hujan Lebat';
   photos?: string[];
+  photoData?: { id: string; url: string }[]; // for server photos with IDs
+  apiLogId?: string; // real API ID for photo operations
 }
 
 export interface Project {

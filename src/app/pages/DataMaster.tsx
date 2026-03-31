@@ -12,17 +12,19 @@ import {
   Search,
   Trash2,
   UsersRound,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useConfirmDialog, useConstructionStatuses, useDepartments, useHousingUnits, useMaterials, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
+import { useConfirmDialog, useConstructionStatuses, useDepartments, useHousingUnits, useMaterials, usePaymentSchemes, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
 import { formatDateId } from '../../lib/date';
 import { formatRupiah } from '../../lib/utils';
 import { housingService } from '../../services';
 import { departmentService } from '../../services/department.service';
 import { materialService } from '../../services/material.service';
+import { paymentSchemeService } from '../../services/paymentScheme.service';
 import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit, UnitBlockRange } from '../../types';
 
 function totalUnitsFromBlockRows(rows: Array<{ prefix: string; start: string; end: string }>): number {
@@ -76,6 +78,7 @@ export function DataMaster() {
     if (p.endsWith('/construction-statuses')) return 'construction-statuses' as const;
     if (p.endsWith('/departments')) return 'departments' as const;
     if (p.endsWith('/materials')) return 'materials' as const;
+    if (p.endsWith('/payment-schemes')) return 'payment-schemes' as const;
     return 'projects' as const;
   }, [location.pathname]);
 
@@ -196,6 +199,46 @@ export function DataMaster() {
       await refetchMaterials();
     } catch (e: any) {
       toast.error(e?.message ?? 'Gagal menghapus material');
+    }
+  };
+
+  // ── Master Data: Payment Schemes ──────────────────────────
+  const { paymentSchemes, refetch: refetchPaymentSchemes } = usePaymentSchemes();
+  const [showPaymentSchemeModal, setShowPaymentSchemeModal] = useState(false);
+  const [editingPaymentScheme, setEditingPaymentScheme] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [paymentSchemeForm, setPaymentSchemeForm] = useState({ name: '', description: '' });
+  const [isSavingPaymentScheme, setIsSavingPaymentScheme] = useState(false);
+
+  const handleSavePaymentScheme = async () => {
+    if (!paymentSchemeForm.name.trim()) { toast.error('Nama skema pembayaran wajib diisi'); return; }
+    if (isSavingPaymentScheme) return;
+    setIsSavingPaymentScheme(true);
+    try {
+      if (editingPaymentScheme) {
+        await paymentSchemeService.update(editingPaymentScheme.id, { name: paymentSchemeForm.name, description: paymentSchemeForm.description || undefined });
+        toast.success('Skema pembayaran berhasil diperbarui');
+      } else {
+        await paymentSchemeService.create({ name: paymentSchemeForm.name, description: paymentSchemeForm.description || undefined });
+        toast.success('Skema pembayaran berhasil ditambahkan');
+      }
+      await refetchPaymentSchemes();
+      setShowPaymentSchemeModal(false);
+      setEditingPaymentScheme(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Gagal menyimpan skema pembayaran');
+    } finally {
+      setIsSavingPaymentScheme(false);
+    }
+  };
+
+  const handleDeletePaymentScheme = async (id: string, name: string) => {
+    if (!(await showConfirm({ title: 'Hapus Skema Pembayaran', description: `Hapus "${name}"?` }))) return;
+    try {
+      await paymentSchemeService.delete(id);
+      toast.success('Skema pembayaran berhasil dihapus');
+      await refetchPaymentSchemes();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Gagal menghapus skema pembayaran');
     }
   };
 
@@ -390,7 +433,7 @@ export function DataMaster() {
           location: projectForm.location || null,
           deadline: projectForm.deadline || null,
           status: projectForm.status,
-          budget_cap: projectForm.budget_cap ?? 0,
+          budget_cap: projectForm.budget_cap || null,
         } as Partial<Project>);
       } else {
         const blocks: UnitBlockRange[] = projectForm.unitBlocks
@@ -417,7 +460,7 @@ export function DataMaster() {
           ...(blocks.length > 0 ? { unit_blocks: blocks } : {}),
           deadline: projectForm.deadline || null,
           status: projectForm.status,
-          budget_cap: projectForm.budget_cap ?? 0,
+          budget_cap: projectForm.budget_cap || null,
         } as Partial<Project>);
         setSelectedProjectId(created.id);
       }
@@ -473,8 +516,8 @@ export function DataMaster() {
 
   const handleSaveUnit = async () => {
     if (!selectedProjectId) return;
-    if (!unitForm.no?.trim() || !unitForm.tipe?.trim()) {
-      toast.error('No Unit dan Tipe wajib diisi');
+    if (!unitForm.no?.trim()) {
+      toast.error('No Unit wajib diisi');
       return;
     }
     if (isSavingUnit) return;
@@ -901,6 +944,88 @@ export function DataMaster() {
                 <button onClick={handleSaveMaterial} disabled={isSavingMaterial} className="px-6 py-2 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-60 flex items-center gap-2">
                   {isSavingMaterial && <Loader2 size={16} className="animate-spin" />}
                   {isSavingMaterial ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── RENDER: Skema Pembayaran ────────────────────────────────
+  if (masterSection === 'payment-schemes') {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        {ConfirmDialog}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary/10 rounded-xl text-primary"><Wallet size={20} /></div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Skema Pembayaran</h1>
+              <p className="text-sm text-gray-500 mt-1">Master data skema pembayaran untuk digunakan di modul Finance.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setEditingPaymentScheme(null); setPaymentSchemeForm({ name: '', description: '' }); setShowPaymentSchemeModal(true); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+          >
+            <Plus size={16} /> Tambah Skema
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase border-b border-gray-200">
+                <th className="py-3 px-5">Nama Skema</th>
+                <th className="py-3 px-5">Deskripsi</th>
+                <th className="py-3 px-5 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paymentSchemes.map((p) => (
+                <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                  <td className="py-3 px-5 font-bold text-gray-900">{p.name}</td>
+                  <td className="py-3 px-5 text-gray-500 text-sm">{p.description || '—'}</td>
+                  <td className="py-3 px-5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => { setEditingPaymentScheme({ id: p.id, name: p.name, description: p.description ?? '' }); setPaymentSchemeForm({ name: p.name, description: p.description ?? '' }); setShowPaymentSchemeModal(true); }} className="p-2 rounded-lg border border-gray-200 hover:border-primary/30 hover:bg-primary/5 transition-colors" title="Edit"><Edit2 size={15} className="text-gray-600" /></button>
+                      <button onClick={() => handleDeletePaymentScheme(p.id, p.name)} className="p-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors" title="Hapus"><Trash2 size={15} className="text-red-600" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {paymentSchemes.length === 0 && (
+                <tr><td colSpan={3} className="py-12 text-center text-sm text-gray-400">Belum ada data skema pembayaran. Tambahkan skema baru.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Modal Skema Pembayaran */}
+        {showPaymentSchemeModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-lg font-bold">{editingPaymentScheme ? 'Edit Skema' : 'Tambah Skema'}</h3>
+                <button onClick={() => setShowPaymentSchemeModal(false)} className="text-gray-400 hover:text-gray-600"><X size={22} /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Nama Skema *</label>
+                  <input value={paymentSchemeForm.name} onChange={(e) => setPaymentSchemeForm({ ...paymentSchemeForm, name: e.target.value })} className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" placeholder="contoh: Cash Keras / KPR Bank" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Deskripsi</label>
+                  <input value={paymentSchemeForm.description} onChange={(e) => setPaymentSchemeForm({ ...paymentSchemeForm, description: e.target.value })} className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20" placeholder="Opsional" />
+                </div>
+              </div>
+              <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                <button onClick={() => setShowPaymentSchemeModal(false)} className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700">Batal</button>
+                <button onClick={handleSavePaymentScheme} disabled={isSavingPaymentScheme} className="px-6 py-2 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-60 flex items-center gap-2">
+                  {isSavingPaymentScheme && <Loader2 size={16} className="animate-spin" />}
+                  {isSavingPaymentScheme ? 'Menyimpan...' : 'Simpan'}
                 </button>
               </div>
             </div>

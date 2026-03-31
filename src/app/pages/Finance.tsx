@@ -12,7 +12,7 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useConfirmDialog, useConsumers, useProjects, useTransactions } from '../../hooks';
+import { useConfirmDialog, useConsumers, useProjects, useTransactions, usePaymentSchemes } from '../../hooks';
 import { formatRupiah, getErrorMessage } from '../../lib/utils';
 import { financeService } from '../../services';
 import { housingService } from '../../services/housing.service';
@@ -54,6 +54,7 @@ export function Finance() {
 
   // ── Cascading project → unit untuk form Dana Masuk/Keluar ────────────
   const { projects } = useProjects();
+  const { paymentSchemes } = usePaymentSchemes();
   const [txProjectId, setTxProjectId] = useState('');
   const [txUnitId, setTxUnitId] = useState('');
   const [txProjectUnits, setTxProjectUnits] = useState<{ id: string; unit_code: string }[]>([]);
@@ -880,9 +881,9 @@ export function Finance() {
                       <label className="text-xs font-bold text-gray-500 uppercase">Skema Pembayaran</label>
                       <select name="payment_scheme" required className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-primary bg-white">
                         <option value="">— Pilih Skema Pembayaran —</option>
-                        <option value="Cash Keras">Cash Keras</option>
-                        <option value="Cash Bertahap">Cash Bertahap</option>
-                        <option value="KPR Bank">KPR Bank</option>
+                        {paymentSchemes.map((p) => (
+                          <option key={p.id} value={p.name}>{p.name}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

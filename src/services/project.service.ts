@@ -150,4 +150,15 @@ export const projectService = {
     const res = await api.put<ApiResponse<WorkLog>>(`/projects/${projectId}/work-logs/${logId}`, payload);
     return res.data.data;
   },
+
+  async deleteWorkLogPhoto(projectId: string, logId: string, photoId: string): Promise<void> {
+    await api.delete(`/projects/${projectId}/work-logs/${logId}/photos/${photoId}`);
+  },
+
+  async addWorkLogPhotos(projectId: string, logId: string, formData: FormData): Promise<unknown> {
+    const res = await api.post(`/projects/${projectId}/work-logs/${logId}/photos`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.data;
+  },
 };

@@ -16,6 +16,7 @@ import {
     X
 } from 'lucide-react';
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { useBarangKeluar, useConfirmDialog, useInventarisLapangan, usePermintaanMaterial, useSuratJalan, useTandaTerimaGudang } from '../../hooks';
 import type { BarangKeluar, InventarisLapangan, PermintaanMaterial, SuratJalan, TandaTerimaGudang } from '../../types';
 import { FormBarangKeluar } from '../components/FormBarangKeluar';
@@ -313,6 +314,62 @@ export const SOP: React.FC = () => {
     return styles[status as keyof typeof styles] || 'bg-gray-50 text-gray-600';
   };
 
+  // ── Print Handlers ──────────────────────────────────────────
+  const handlePrint = (title: string, contentHtml: string) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) { toast.error('Popup diblokir browser. Izinkan popup untuk mencetak.'); return; }
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+      body{font-family:Arial,sans-serif;padding:20px;color:#111}
+      table{width:100%;border-collapse:collapse;margin-top:12px}
+      th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:12px}
+      th{background:#f5f5f5;font-weight:bold;text-transform:uppercase;font-size:10px}
+      h2{margin:0 0 4px;font-size:18px} .meta{font-size:12px;color:#555;margin-bottom:16px}
+      .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:bold}
+      .footer{margin-top:40px;display:flex;justify-content:space-between}
+      .sign-box{text-align:center;width:200px} .sign-box .line{border-top:1px solid #333;margin-top:60px;padding-top:4px}
+      @media print{body{padding:0} button{display:none!important}}
+    </style></head><body>${contentHtml}<script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+    printWindow.document.close();
+  };
+
+  const handlePrintPermintaan = (item: PermintaanMaterial) => {
+    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.qty} ${m.satuan}</td><td>${m.keterangan || '-'}</td></tr>`).join('');
+    handlePrint(`Permintaan Material - ${item.noForm}`, `
+      <h2>FORM PERMINTAAN MATERIAL</h2>
+      <div class="meta">No: <strong>${item.noForm}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; Divisi: ${item.divisi} &nbsp;|&nbsp; Peminta: ${item.namaPeminta}</div>
+      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Keterangan</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="footer"><div class="sign-box">Diperiksa<div class="line">${item.diperiksa || '___________'}</div></div><div class="sign-box">Disetujui<div class="line">${item.disetujui || '___________'}</div></div></div>
+    `);
+  };
+
+  const handlePrintTerima = (item: TandaTerimaGudang) => {
+    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.qty} ${m.satuan}</td><td style="text-align:center">${m.kondisi}</td></tr>`).join('');
+    handlePrint(`Tanda Terima Gudang - ${item.noTerima}`, `
+      <h2>TANDA TERIMA BARANG GUDANG</h2>
+      <div class="meta">No: <strong>${item.noTerima}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; Supplier: ${item.supplier} &nbsp;|&nbsp; Penerima: ${item.penerima}</div>
+      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Kondisi</th></tr></thead><tbody>${rows}</tbody></table>
+    `);
+  };
+
+  const handlePrintKeluar = (item: BarangKeluar) => {
+    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.qty} ${m.satuan}</td><td>${m.keterangan || '-'}</td></tr>`).join('');
+    handlePrint(`Barang Keluar - ${item.noForm}`, `
+      <h2>FORM BARANG KELUAR</h2>
+      <div class="meta">No: <strong>${item.noForm}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; Tujuan: ${item.tujuan} &nbsp;|&nbsp; Penerima: ${item.penerima} &nbsp;|&nbsp; Project: ${item.project}</div>
+      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Keterangan</th></tr></thead><tbody>${rows}</tbody></table>
+    `);
+  };
+
+  const handlePrintSuratJalan = (item: SuratJalan) => {
+    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.jumlah} ${m.satuan}</td><td>${m.keterangan || '-'}</td></tr>`).join('');
+    handlePrint(`Surat Jalan - ${item.nomorSurat}`, `
+      <h2>SURAT JALAN</h2>
+      <div class="meta">No: <strong>${item.nomorSurat}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; No PO: ${item.nomorPO} &nbsp;|&nbsp; Kepada: ${item.kepada}<br/>Dikirim Dengan: ${item.dikirimDengan} &nbsp;|&nbsp; No Polisi: ${item.noPolisi} &nbsp;|&nbsp; Pengemudi: ${item.namaPengemudi}</div>
+      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Keterangan</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="footer"><div class="sign-box">Tanda Terima<div class="line">${item.tandaTerima || '___________'}</div></div><div class="sign-box">Pengemudi<div class="line">${item.pengemudi || '___________'}</div></div><div class="sign-box">Mengetahui<div class="line">${item.mengetahui || '___________'}</div></div></div>
+    `);
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'permintaan':
@@ -336,7 +393,7 @@ export const SOP: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print">
+                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintPermintaan(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditPermintaan(item)}>
@@ -394,7 +451,7 @@ export const SOP: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print">
+                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintTerima(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditTerima(item)}>
@@ -462,7 +519,7 @@ export const SOP: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print">
+                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintKeluar(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditKeluar(item)}>
@@ -601,7 +658,7 @@ export const SOP: React.FC = () => {
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditSuratJalan(item)}>
                         <Edit2 size={16} className="text-gray-500" />
                       </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print">
+                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintSuratJalan(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeleteSuratJalan(item.id)}>
