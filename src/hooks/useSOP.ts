@@ -44,6 +44,15 @@ export function usePermintaanMaterial(status?: string) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
+  const update = async (id: string, payload: Partial<PermintaanMaterial>) => {
+    try {
+      const p = await sopService.updatePermintaan(id, payload);
+      toast.success('Permintaan material diperbarui');
+      await fetchData();
+      return p;
+    } catch (err) { toast.error(getErrorMessage(err)); throw err; }
+  };
+
   const reject = async (id: string) => {
     try {
       await sopService.rejectPermintaan(id);
@@ -60,7 +69,7 @@ export function usePermintaanMaterial(status?: string) {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { permintaanList, setPermintaanList, isLoading, refetch: fetchData, create, approve, reject, remove };
+  return { permintaanList, setPermintaanList, isLoading, refetch: fetchData, create, update, approve, reject, remove };
 }
 
 // ── Hook Tanda Terima Gudang ──────────────────────────────────────
@@ -97,6 +106,15 @@ export function useTandaTerimaGudang() {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
+  const update = async (id: string, payload: Partial<TandaTerimaGudang>) => {
+    try {
+      const t = await sopService.updateTTG(id, payload);
+      toast.success('TTG berhasil diperbarui');
+      await fetchData();
+      return t;
+    } catch (err) { toast.error(getErrorMessage(err)); throw err; }
+  };
+
   const remove = async (id: string) => {
     try {
       await sopService.removeTTG(id);
@@ -105,7 +123,7 @@ export function useTandaTerimaGudang() {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { ttgList, setTtgList, isLoading, refetch: fetchData, create, verify, remove };
+  return { ttgList, setTtgList, isLoading, refetch: fetchData, create, update, verify, remove };
 }
 
 // ── Hook Barang Keluar ────────────────────────────────────────────
@@ -134,6 +152,23 @@ export function useBarangKeluar() {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
+  const verify = async (id: string) => {
+    try {
+      await sopService.verifyBarangKeluar(id);
+      toast.success('Barang keluar berhasil diselesaikan');
+      await fetchData();
+    } catch (err) { toast.error(getErrorMessage(err)); throw err; }
+  };
+
+  const update = async (id: string, payload: Partial<BarangKeluar>) => {
+    try {
+      const b = await sopService.updateBarangKeluar(id, payload);
+      toast.success('Barang keluar diperbarui');
+      await fetchData();
+      return b;
+    } catch (err) { toast.error(getErrorMessage(err)); throw err; }
+  };
+
   const remove = async (id: string) => {
     try {
       await sopService.removeBarangKeluar(id);
@@ -142,7 +177,7 @@ export function useBarangKeluar() {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { barangKeluarList, setBarangKeluarList, isLoading, refetch: fetchData, create, remove };
+  return { barangKeluarList, setBarangKeluarList, isLoading, refetch: fetchData, create, update, verify, remove };
 }
 
 // ── Hook Inventaris Lapangan ──────────────────────────────────────
@@ -216,6 +251,15 @@ export function useSuratJalan() {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
+  const update = async (id: string, payload: Partial<SuratJalan>) => {
+    try {
+      const s = await sopService.updateSuratJalan(id, payload);
+      toast.success('Surat jalan diperbarui');
+      await fetchData();
+      return s;
+    } catch (err) { toast.error(getErrorMessage(err)); throw err; }
+  };
+
   const remove = async (id: string) => {
     try {
       await sopService.removeSuratJalan(id);
@@ -224,5 +268,13 @@ export function useSuratJalan() {
     } catch (err) { toast.error(getErrorMessage(err)); throw err; }
   };
 
-  return { suratJalanList, setSuratJalanList, isLoading, refetch: fetchData, create, remove };
+  const updateStatus = async (id: string, status: string) => {
+    try {
+      await sopService.updateSuratJalanStatus(id, status);
+      toast.success('Status surat jalan diperbarui');
+      await fetchData();
+    } catch (err) { toast.error(getErrorMessage(err)); throw err; }
+  };
+
+  return { suratJalanList, setSuratJalanList, isLoading, refetch: fetchData, create, update, remove, updateStatus };
 }

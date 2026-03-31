@@ -44,8 +44,8 @@ function mapPermintaan(r: any): PermintaanMaterial {
     divisi: r.divisi ?? '',
     namaPeminta: r.requester?.name ?? r.namaPeminta ?? '',
     status: r.status ?? 'Draft',
-    disetujui: r.disetujui ?? '',
-    diperiksa: r.diperiksa ?? '',
+    disetujui: r.signature_disetujui ?? r.disetujui ?? '',
+    diperiksa: r.signature_diperiksa ?? r.diperiksa ?? '',
     createdAt: r.created_at ?? r.createdAt ?? '',
     items: (r.items ?? []).map(mapPermintaanItem),
   };
@@ -67,7 +67,9 @@ function mapTTG(r: any): TandaTerimaGudang {
     noTerima: r.nomor ?? r.noTerima ?? '',
     tanggal: r.receive_date ?? r.tanggal ?? '',
     supplier: r.supplier ?? '',
-    penerima: r.receiver?.name ?? r.penerima ?? '',
+    penerima: r.signature_penerima ?? r.receiver?.name ?? r.penerima ?? '',
+    pengirim: r.signature_pengirim ?? r.pengirim ?? '',
+    mengetahui: r.signature_mengetahui ?? r.mengetahui ?? '',
     status: r.status ?? 'Draft',
     createdAt: r.created_at ?? r.createdAt ?? '',
     items: (r.items ?? []).map(mapTTGItem),
@@ -91,8 +93,11 @@ function mapBK(r: any): BarangKeluar {
     tanggal: r.issue_date ?? r.tanggal ?? '',
     tujuan: r.received_by ?? r.tujuan ?? '',
     penerima: r.received_by ?? r.penerima ?? '',
-    project: r.project ?? '',
+    project: r.projectModel?.name ?? r.project ?? '',
+    projectId: r.project_id ?? '',
     status: r.status ?? 'Draft',
+    disetujui: r.signature_disetujui ?? r.disetujui ?? '',
+    diperiksa: r.signature_diperiksa ?? r.diperiksa ?? '',
     createdAt: r.created_at ?? r.createdAt ?? '',
     items: (r.items ?? []).map(mapBKItem),
   };
@@ -110,6 +115,9 @@ function mapInventaris(r: any): InventarisLapangan {
     satuan: r.unit ?? r.satuan ?? '',
     tanggalCatat: r.last_check ?? r.tanggalCatat ?? '',
     penanggungJawab: r.penanggungJawab ?? '',
+    disetujui: r.signature_disetujui ?? r.disetujui ?? '',
+    diperiksa: r.signature_diperiksa ?? r.diperiksa ?? '',
+    logistik: r.signature_logistik ?? r.logistik ?? '',
     createdAt: r.created_at ?? r.createdAt ?? '',
     updatedAt: r.updated_at ?? r.updatedAt ?? '',
   };
@@ -132,12 +140,12 @@ function mapSJ(r: any): SuratJalan {
     tanggal: r.send_date ?? r.tanggal ?? '',
     nomorPO: r.nomorPO ?? '',
     kepada: r.destination ?? r.kepada ?? '',
-    dikirimDengan: r.dikirimDengan ?? '',
+    dikirimDengan: r.dikirim_dengan ?? r.dikirimDengan ?? '',
     noPolisi: r.vehicle_no ?? r.noPolisi ?? '',
     namaPengemudi: r.driver_name ?? r.namaPengemudi ?? '',
     tandaTerima: r.tandaTerima ?? '',
-    pengemudi: r.driver_name ?? r.pengemudi ?? '',
-    mengetahui: r.issuer?.name ?? r.mengetahui ?? '',
+    pengemudi: r.signature_pengemudi ?? r.driver_name ?? r.pengemudi ?? '',
+    mengetahui: r.signature_mengetahui ?? r.issuer?.name ?? r.mengetahui ?? '',
     totalBarang: (r.items ?? []).reduce((s: number, i: any) => s + Number(i.qty ?? i.jumlah ?? 0), 0),
     status: r.status ?? 'Draft',
     createdAt: r.created_at ?? r.createdAt ?? '',
@@ -151,6 +159,9 @@ function permintaanToApi(p: Partial<PermintaanMaterial>): Record<string, unknown
   return {
     nomor: p.noForm,
     request_date: p.tanggal,
+    divisi: p.divisi,
+    signature_disetujui: p.disetujui,
+    signature_diperiksa: p.diperiksa,
     notes: '',
     items: (p.items ?? []).map(i => ({
       item_name: i.namaBarang,
@@ -166,6 +177,9 @@ function ttgToApi(t: Partial<TandaTerimaGudang>): Record<string, unknown> {
     nomor: t.noTerima,
     receive_date: t.tanggal,
     supplier: t.supplier,
+    signature_pengirim: t.pengirim,
+    signature_penerima: t.penerima,
+    signature_mengetahui: t.mengetahui,
     notes: '',
     items: (t.items ?? []).map(i => ({
       item_name: i.namaBarang,
@@ -183,6 +197,9 @@ function bkToApi(b: Partial<BarangKeluar>): Record<string, unknown> {
     nomor: b.noForm,
     issue_date: b.tanggal,
     received_by: b.penerima ?? b.tujuan,
+    project_id: b.projectId,
+    signature_disetujui: b.disetujui,
+    signature_diperiksa: b.diperiksa,
     notes: '',
     items: (b.items ?? []).map(i => ({
       item_name: i.namaBarang,
@@ -195,6 +212,7 @@ function bkToApi(b: Partial<BarangKeluar>): Record<string, unknown> {
 
 function inventarisToApi(inv: Partial<InventarisLapangan>): Record<string, unknown> {
   return {
+    kode: inv.kode,
     item_name: inv.namaBarang,
     category: inv.kategori,
     unit: inv.satuan,
@@ -202,6 +220,9 @@ function inventarisToApi(inv: Partial<InventarisLapangan>): Record<string, unkno
     condition: inv.kondisi ?? 'Baik',
     location: inv.lokasi,
     last_check: inv.tanggalCatat,
+    signature_disetujui: inv.disetujui,
+    signature_diperiksa: inv.diperiksa,
+    signature_logistik: inv.logistik,
     notes: '',
   };
 }
@@ -213,6 +234,9 @@ function sjToApi(sj: Partial<SuratJalan>): Record<string, unknown> {
     driver_name: sj.namaPengemudi ?? sj.pengemudi,
     vehicle_no: sj.noPolisi,
     destination: sj.kepada,
+    dikirim_dengan: sj.dikirimDengan,
+    signature_pengemudi: sj.pengemudi,
+    signature_mengetahui: sj.mengetahui,
     notes: '',
     items: (sj.items ?? []).map(i => ({
       item_name: i.namaBarang,
@@ -247,6 +271,11 @@ export const sopService = {
     return mapPermintaan(res.data.data);
   },
 
+  async updatePermintaan(id: string, payload: Partial<PermintaanMaterial>): Promise<PermintaanMaterial> {
+    const res = await api.put<ApiResponse<unknown>>(`/material-requests/${id}`, permintaanToApi(payload));
+    return mapPermintaan(res.data.data);
+  },
+
   async approvePermintaan(id: string): Promise<PermintaanMaterial> {
     const res = await api.patch<ApiResponse<unknown>>(`/material-requests/${id}/approve`);
     return mapPermintaan(res.data.data);
@@ -271,6 +300,11 @@ export const sopService = {
     return res.data as Blob;
   },
 
+  async getPermintaanPdfBlobById(id: string): Promise<Blob> {
+    const res = await api.get(`/material-requests/${id}/pdf`, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
   // ── Tanda Terima Gudang ──────────────────────────────────────
   async getTTG(params?: { status?: string; page?: number }): Promise<PaginatedResponse<TandaTerimaGudang>> {
     const res = await api.get('/warehouse-receipts', {
@@ -282,6 +316,11 @@ export const sopService = {
 
   async createTTG(payload: Partial<TandaTerimaGudang>): Promise<TandaTerimaGudang> {
     const res = await api.post<ApiResponse<unknown>>('/warehouse-receipts', ttgToApi(payload));
+    return mapTTG(res.data.data);
+  },
+
+  async updateTTG(id: string, payload: Partial<TandaTerimaGudang>): Promise<TandaTerimaGudang> {
+    const res = await api.put<ApiResponse<unknown>>(`/warehouse-receipts/${id}`, ttgToApi(payload));
     return mapTTG(res.data.data);
   },
 
@@ -320,6 +359,16 @@ export const sopService = {
 
   async createBarangKeluar(payload: Partial<BarangKeluar>): Promise<BarangKeluar> {
     const res = await api.post<ApiResponse<unknown>>('/goods-out', bkToApi(payload));
+    return mapBK(res.data.data);
+  },
+
+  async updateBarangKeluar(id: string, payload: Partial<BarangKeluar>): Promise<BarangKeluar> {
+    const res = await api.put<ApiResponse<unknown>>(`/goods-out/${id}`, bkToApi(payload));
+    return mapBK(res.data.data);
+  },
+
+  async verifyBarangKeluar(id: string): Promise<BarangKeluar> {
+    const res = await api.patch<ApiResponse<unknown>>(`/goods-out/${id}/verify`);
     return mapBK(res.data.data);
   },
 
@@ -391,6 +440,11 @@ export const sopService = {
 
   async createSuratJalan(payload: Partial<SuratJalan>): Promise<SuratJalan> {
     const res = await api.post<ApiResponse<unknown>>('/delivery-orders', sjToApi(payload));
+    return mapSJ(res.data.data);
+  },
+
+  async updateSuratJalan(id: string, payload: Partial<SuratJalan>): Promise<SuratJalan> {
+    const res = await api.put<ApiResponse<unknown>>(`/delivery-orders/${id}`, sjToApi(payload));
     return mapSJ(res.data.data);
   },
 

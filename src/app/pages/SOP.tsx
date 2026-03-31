@@ -1,5 +1,6 @@
 import {
     Calendar,
+    Check,
     ClipboardList,
     Edit2,
     FileText,
@@ -18,6 +19,7 @@ import {
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { useBarangKeluar, useConfirmDialog, useInventarisLapangan, usePermintaanMaterial, useSuratJalan, useTandaTerimaGudang } from '../../hooks';
+import { sopService } from '../../services/sop.service';
 import type { BarangKeluar, InventarisLapangan, PermintaanMaterial, SuratJalan, TandaTerimaGudang } from '../../types';
 import { FormBarangKeluar } from '../components/FormBarangKeluar';
 import { FormInventarisLapangan } from '../components/FormInventarisLapangan';
@@ -36,15 +38,15 @@ export const SOP: React.FC = () => {
   // Hooks — sumber data dari API + operasi CRUD
   const {
     permintaanList, setPermintaanList,
-    create: createPermintaan, remove: removePermintaan,
+    create: createPermintaan, update: updatePermintaan, remove: removePermintaan, approve: approvePermintaan, reject: rejectPermintaan,
   } = usePermintaanMaterial();
   const {
     ttgList, setTtgList,
-    create: createTTG, remove: removeTTG,
+    create: createTTG, update: updateTTG, remove: removeTTG, verify: verifyTTG,
   } = useTandaTerimaGudang();
   const {
     barangKeluarList, setBarangKeluarList,
-    create: createBK, remove: removeBK,
+    create: createBK, update: updateBK, remove: removeBK, verify: verifyBK
   } = useBarangKeluar();
   const {
     inventarisList, setInventarisList,
@@ -52,7 +54,7 @@ export const SOP: React.FC = () => {
   } = useInventarisLapangan();
   const {
     suratJalanList, setSuratJalanList,
-    create: createSJ, remove: removeSJ,
+    create: createSJ, update: updateSJ, remove: removeSJ, updateStatus: updateStatusSuratJalan,
   } = useSuratJalan();
 
   const [showModal, setShowModal] = useState(false);
@@ -101,12 +103,15 @@ export const SOP: React.FC = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSavePermintaan = async (data: any) => {
     if (editPermintaanData) {
-      // Update existing (local state update, backend doesn't have PUT for permintaan)
-      setPermintaanList(prev => prev.map(item =>
-        item.id === editPermintaanData.id
-          ? { ...item, noForm: data.noForm, divisi: data.divisi, namaPeminta: data.namaPeminta, items: data.items, disetujui: data.disetujui, diperiksa: data.diperiksa, tanggal: data.tanggal }
-          : item
-      ));
+      await updatePermintaan(editPermintaanData.id, {
+        noForm: data.noForm,
+        tanggal: data.tanggal,
+        divisi: data.divisi,
+        namaPeminta: data.namaPeminta,
+        items: data.items,
+        disetujui: data.disetujui,
+        diperiksa: data.diperiksa,
+      });
     } else {
       await createPermintaan({
         noForm: data.noForm,
@@ -133,22 +138,33 @@ export const SOP: React.FC = () => {
     }
   };
 
+  const handleApprovePermintaan = async (id: string) => {
+    if (await showConfirm({ title: 'Setujui Permintaan', description: 'Permintaan material ini akan disetujui.', confirmText: 'Setujui' })) {
+      await approvePermintaan(id);
+    }
+  };
+
+  const handleRejectPermintaan = async (id: string) => {
+    if (await showConfirm({ title: 'Tolak Permintaan', description: 'Permintaan material ini akan ditolak.', confirmText: 'Tolak', variant: 'danger' })) {
+      await rejectPermintaan(id);
+    }
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSaveTerima = async (data: any) => {
+    const payload = {
+      noTerima: data.noTerima,
+      tanggal: data.tanggal,
+      supplier: data.supplier,
+      penerima: data.penerima,
+      pengirim: data.pengirim,
+      mengetahui: data.mengetahui,
+      items: data.items.map((i: any) => ({ ...i, kondisi: i.kondisi || 'Baik' })), // eslint-disable-line @typescript-eslint/no-explicit-any
+    };
     if (editTerimaData) {
-      setTtgList(prev => prev.map(item =>
-        item.id === editTerimaData.id
-          ? { ...item, noTerima: data.noTerima, supplier: data.supplier, penerima: data.penerima, items: data.items.map((i: any) => ({ ...i, kondisi: i.kondisi || 'Baik' })), tanggal: data.tanggal } // eslint-disable-line @typescript-eslint/no-explicit-any
-          : item
-      ));
+      await updateTTG(editTerimaData.id, payload);
     } else {
-      await createTTG({
-        noTerima: data.noTerima,
-        tanggal: data.tanggal,
-        supplier: data.supplier,
-        penerima: data.penerima,
-        items: data.items.map((i: any) => ({ ...i, kondisi: i.kondisi || 'Baik' })), // eslint-disable-line @typescript-eslint/no-explicit-any
-      });
+      await createTTG(payload);
     }
     setEditTerimaData(null);
     setShowFormTerima(false);
@@ -165,23 +181,29 @@ export const SOP: React.FC = () => {
     }
   };
 
+  const handleVerifyTerima = async (id: string) => {
+    if (await showConfirm({ title: 'Verifikasi Tanda Terima Gudang', description: 'Selesaikan dan kunci dokumen TTG?', confirmText: 'Verifikasi' })) {
+      await verifyTTG(id);
+    }
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSaveKeluar = async (data: any) => {
+    const payload = {
+      noForm: data.noForm,
+      tanggal: data.tanggal,
+      tujuan: data.tujuan,
+      penerima: data.penerima,
+      project: data.project,
+      projectId: data.projectId,
+      disetujui: data.disetujui,
+      diperiksa: data.diperiksa,
+      items: data.items,
+    };
     if (editKeluarData) {
-      setBarangKeluarList(prev => prev.map(item =>
-        item.id === editKeluarData.id
-          ? { ...item, noForm: data.noForm, tujuan: data.tujuan, penerima: data.penerima, project: data.project, items: data.items, tanggal: data.tanggal }
-          : item
-      ));
+      await updateBK(editKeluarData.id, payload);
     } else {
-      await createBK({
-        noForm: data.noForm,
-        tanggal: data.tanggal,
-        tujuan: data.tujuan,
-        penerima: data.penerima,
-        project: data.project,
-        items: data.items,
-      });
+      await createBK(payload);
     }
     setEditKeluarData(null);
     setShowFormKeluar(false);
@@ -193,8 +215,26 @@ export const SOP: React.FC = () => {
   };
 
   const handleDeleteKeluar = async (id: string) => {
-    if (await showConfirm({ title: 'Hapus Barang Keluar', description: 'Apakah Anda yakin ingin menghapus form barang keluar ini?' })) {
-      await removeBK(id);
+    if (await showConfirm({
+      title: 'Hapus Tanda Bukti?',
+      description: 'Apakah Anda yakin ingin menghapus data bukti barang keluar ini? Data yang dihapus tidak dapat direcovery.',
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      variant: 'danger',
+    })) {
+      try { await removeBK(id); } catch(err){}
+    }
+  };
+
+  const handleVerifyKeluar = async (id: string) => {
+    if (await showConfirm({
+      title: 'Selesaikan Dokumen?',
+      description: 'Status Barang Keluar akan diubah menjadi Selesai dan tidak dapat diedit lagi.',
+      confirmText: 'Ya, Selesaikan',
+      cancelText: 'Batal',
+      variant: 'default',
+    })) {
+      try { await verifyBK(id); } catch (err) {}
     }
   };
 
@@ -211,6 +251,9 @@ export const SOP: React.FC = () => {
         tanggalCatat: data.tanggalCatat,
         penanggungJawab: data.penanggungJawab,
         kode: data.kode,
+        disetujui: data.disetujui,
+        diperiksa: data.diperiksa,
+        logistik: data.logistik,
       });
     } else if (data.items) {
       // Batch create from form table
@@ -224,6 +267,9 @@ export const SOP: React.FC = () => {
           satuan: item.satuan || 'Unit',
           tanggalCatat: item.tanggalPeminjaman || new Date().toISOString().slice(0, 10),
           penanggungJawab: data.penanggungJawab || 'Admin',
+          disetujui: data.disetujui,
+          diperiksa: data.diperiksa,
+          logistik: data.logistik,
         });
       }
     } else {
@@ -237,6 +283,9 @@ export const SOP: React.FC = () => {
         tanggalCatat: data.tanggalCatat,
         penanggungJawab: data.penanggungJawab,
         kode: data.kode,
+        disetujui: data.disetujui,
+        diperiksa: data.diperiksa,
+        logistik: data.logistik,
       });
     }
     setEditInventarisData(null);
@@ -254,14 +303,29 @@ export const SOP: React.FC = () => {
     }
   };
 
+  const handleUpdateStatusSuratJalan = async (id: string, newStatus: string) => {
+    if (await showConfirm({ title: `Tandai sebagai ${newStatus}?`, description: `Apakah Anda yakin ingin mengubah status surat jalan menjadi ${newStatus}?`, confirmText: 'Perbarui Status' })) {
+      await updateStatusSuratJalan(id, newStatus);
+    }
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSaveSuratJalan = async (data: any) => {
     if (editSuratJalanData) {
-      setSuratJalanList(prev => prev.map(item =>
-        item.id === editSuratJalanData.id
-          ? { ...item, nomorSurat: data.nomorSurat, tanggal: data.tanggal, nomorPO: data.nomorPO, kepada: data.kepada, dikirimDengan: data.dikirimDengan, noPolisi: data.noPolisi, namaPengemudi: data.namaPengemudi, tandaTerima: data.tandaTerima, pengemudi: data.pengemudi, mengetahui: data.mengetahui, items: data.items, totalBarang: data.totalBarang, status: data.status || item.status }
-          : item
-      ));
+      await updateSJ(editSuratJalanData.id, {
+        nomorSurat: data.nomorSurat,
+        tanggal: data.tanggal,
+        nomorPO: data.nomorPO,
+        kepada: data.kepada,
+        dikirimDengan: data.dikirimDengan,
+        noPolisi: data.noPolisi,
+        namaPengemudi: data.namaPengemudi,
+        tandaTerima: data.tandaTerima,
+        pengemudi: data.pengemudi,
+        mengetahui: data.mengetahui,
+        items: data.items,
+        totalBarang: data.totalBarang,
+      });
     } else {
       await createSJ({
         nomorSurat: data.nomorSurat,
@@ -315,59 +379,37 @@ export const SOP: React.FC = () => {
   };
 
   // ── Print Handlers ──────────────────────────────────────────
-  const handlePrint = (title: string, contentHtml: string) => {
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (!printWindow) { toast.error('Popup diblokir browser. Izinkan popup untuk mencetak.'); return; }
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
-      body{font-family:Arial,sans-serif;padding:20px;color:#111}
-      table{width:100%;border-collapse:collapse;margin-top:12px}
-      th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:12px}
-      th{background:#f5f5f5;font-weight:bold;text-transform:uppercase;font-size:10px}
-      h2{margin:0 0 4px;font-size:18px} .meta{font-size:12px;color:#555;margin-bottom:16px}
-      .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:bold}
-      .footer{margin-top:40px;display:flex;justify-content:space-between}
-      .sign-box{text-align:center;width:200px} .sign-box .line{border-top:1px solid #333;margin-top:60px;padding-top:4px}
-      @media print{body{padding:0} button{display:none!important}}
-    </style></head><body>${contentHtml}<script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
-    printWindow.document.close();
+  const handleDownloadPdf = async (id: string, fileName: string, fetcher: (id: string) => Promise<Blob>) => {
+    try {
+      const toastId = toast.loading('Memproses PDF...');
+      const blob = await fetcher(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF berhasil diunduh', { id: toastId });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Gagal mengunduh PDF');
+      console.error(e);
+    }
   };
 
   const handlePrintPermintaan = (item: PermintaanMaterial) => {
-    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.qty} ${m.satuan}</td><td>${m.keterangan || '-'}</td></tr>`).join('');
-    handlePrint(`Permintaan Material - ${item.noForm}`, `
-      <h2>FORM PERMINTAAN MATERIAL</h2>
-      <div class="meta">No: <strong>${item.noForm}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; Divisi: ${item.divisi} &nbsp;|&nbsp; Peminta: ${item.namaPeminta}</div>
-      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Keterangan</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="footer"><div class="sign-box">Diperiksa<div class="line">${item.diperiksa || '___________'}</div></div><div class="sign-box">Disetujui<div class="line">${item.disetujui || '___________'}</div></div></div>
-    `);
+    handleDownloadPdf(item.id, `PermintaanMaterial-${item.noForm}.pdf`, sopService.getPermintaanPdfBlobById);
   };
 
   const handlePrintTerima = (item: TandaTerimaGudang) => {
-    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.qty} ${m.satuan}</td><td style="text-align:center">${m.kondisi}</td></tr>`).join('');
-    handlePrint(`Tanda Terima Gudang - ${item.noTerima}`, `
-      <h2>TANDA TERIMA BARANG GUDANG</h2>
-      <div class="meta">No: <strong>${item.noTerima}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; Supplier: ${item.supplier} &nbsp;|&nbsp; Penerima: ${item.penerima}</div>
-      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Kondisi</th></tr></thead><tbody>${rows}</tbody></table>
-    `);
+    handleDownloadPdf(item.id, `TTG-${item.noTerima}.pdf`, sopService.getTTGPdfBlobById);
   };
 
   const handlePrintKeluar = (item: BarangKeluar) => {
-    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.qty} ${m.satuan}</td><td>${m.keterangan || '-'}</td></tr>`).join('');
-    handlePrint(`Barang Keluar - ${item.noForm}`, `
-      <h2>FORM BARANG KELUAR</h2>
-      <div class="meta">No: <strong>${item.noForm}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; Tujuan: ${item.tujuan} &nbsp;|&nbsp; Penerima: ${item.penerima} &nbsp;|&nbsp; Project: ${item.project}</div>
-      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Keterangan</th></tr></thead><tbody>${rows}</tbody></table>
-    `);
+    handleDownloadPdf(item.id, `BarangKeluar-${item.noForm}.pdf`, sopService.getBarangKeluarPdfBlobById);
   };
 
   const handlePrintSuratJalan = (item: SuratJalan) => {
-    const rows = item.items.map((m, i) => `<tr><td>${i+1}</td><td>${m.namaBarang}</td><td style="text-align:center">${m.jumlah} ${m.satuan}</td><td>${m.keterangan || '-'}</td></tr>`).join('');
-    handlePrint(`Surat Jalan - ${item.nomorSurat}`, `
-      <h2>SURAT JALAN</h2>
-      <div class="meta">No: <strong>${item.nomorSurat}</strong> &nbsp;|&nbsp; Tanggal: ${item.tanggal} &nbsp;|&nbsp; No PO: ${item.nomorPO} &nbsp;|&nbsp; Kepada: ${item.kepada}<br/>Dikirim Dengan: ${item.dikirimDengan} &nbsp;|&nbsp; No Polisi: ${item.noPolisi} &nbsp;|&nbsp; Pengemudi: ${item.namaPengemudi}</div>
-      <table><thead><tr><th>No</th><th>Nama Barang</th><th>Qty</th><th>Keterangan</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="footer"><div class="sign-box">Tanda Terima<div class="line">${item.tandaTerima || '___________'}</div></div><div class="sign-box">Pengemudi<div class="line">${item.pengemudi || '___________'}</div></div><div class="sign-box">Mengetahui<div class="line">${item.mengetahui || '___________'}</div></div></div>
-    `);
+    handleDownloadPdf(item.id, `SuratJalan-${item.nomorSurat}.pdf`, sopService.getSuratJalanPdfBlobById);
   };
 
   const renderContent = () => {
@@ -393,14 +435,26 @@ export const SOP: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {item.status === 'Diajukan' && (
+                        <>
+                          <button className="p-2 hover:bg-green-50 rounded-lg transition-colors" title="Setujui" onClick={() => handleApprovePermintaan(item.id)}>
+                            <Check size={16} className="text-green-600" />
+                          </button>
+                          <button className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Tolak" onClick={() => handleRejectPermintaan(item.id)}>
+                            <X size={16} className="text-red-500" />
+                          </button>
+                        </>
+                      )}
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintPermintaan(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditPermintaan(item)}>
-                        <Edit2 size={16} className="text-gray-500" />
-                      </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeletePermintaan(item.id)}>
-                        <Trash2 size={16} className="text-gray-500" />
+                      {item.status !== 'Selesai' && item.status !== 'Disetujui' && item.status !== 'Ditolak' && (
+                        <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditPermintaan(item)}>
+                          <Edit2 size={16} className="text-gray-500" />
+                        </button>
+                      )}
+                      <button className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeletePermintaan(item.id)}>
+                        <Trash2 size={16} className="text-red-400" />
                       </button>
                     </div>
                   </div>
@@ -451,14 +505,21 @@ export const SOP: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {item.status === 'Draft' && (
+                        <button className="p-2 hover:bg-green-50 rounded-lg transition-colors" title="Verifikasi TTG" onClick={() => handleVerifyTerima(item.id)}>
+                          <Check size={16} className="text-green-600" />
+                        </button>
+                      )}
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintTerima(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditTerima(item)}>
-                        <Edit2 size={16} className="text-gray-500" />
-                      </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeleteTerima(item.id)}>
-                        <Trash2 size={16} className="text-gray-500" />
+                      {item.status !== 'Selesai' && (
+                        <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditTerima(item)}>
+                          <Edit2 size={16} className="text-gray-500" />
+                        </button>
+                      )}
+                      <button className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeleteTerima(item.id)}>
+                        <Trash2 size={16} className="text-red-400" />
                       </button>
                     </div>
                   </div>
@@ -519,14 +580,21 @@ export const SOP: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {item.status === 'Draft' && (
+                        <button className="p-2 hover:bg-green-50 rounded-lg transition-colors" title="Selesaikan" onClick={() => handleVerifyKeluar(item.id)}>
+                          <Check size={16} className="text-green-600" />
+                        </button>
+                      )}
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintKeluar(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditKeluar(item)}>
-                        <Edit2 size={16} className="text-gray-500" />
-                      </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeleteKeluar(item.id)}>
-                        <Trash2 size={16} className="text-gray-500" />
+                      {item.status !== 'Selesai' && (
+                        <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditKeluar(item)}>
+                          <Edit2 size={16} className="text-gray-500" />
+                        </button>
+                      )}
+                      <button className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeleteKeluar(item.id)}>
+                        <Trash2 size={16} className="text-red-400" />
                       </button>
                     </div>
                   </div>
@@ -655,14 +723,26 @@ export const SOP: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditSuratJalan(item)}>
-                        <Edit2 size={16} className="text-gray-500" />
-                      </button>
+                      {item.status === 'Draft' && (
+                        <button className="p-2 hover:bg-blue-50 rounded-lg transition-colors" title="Tandai Dikirim" onClick={() => handleUpdateStatusSuratJalan(item.id, 'Dikirim')}>
+                          <Truck size={16} className="text-blue-600" />
+                        </button>
+                      )}
+                      {item.status === 'Dikirim' && (
+                        <button className="p-2 hover:bg-green-50 rounded-lg transition-colors" title="Tandai Diterima" onClick={() => handleUpdateStatusSuratJalan(item.id, 'Diterima')}>
+                          <Check size={16} className="text-green-600" />
+                        </button>
+                      )}
                       <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Print" onClick={() => handlePrintSuratJalan(item)}>
                         <Printer size={16} className="text-gray-500" />
                       </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeleteSuratJalan(item.id)}>
-                        <Trash2 size={16} className="text-gray-500" />
+                      {item.status === 'Draft' && (
+                        <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Edit" onClick={() => handleEditSuratJalan(item)}>
+                          <Edit2 size={16} className="text-gray-500" />
+                        </button>
+                      )}
+                      <button className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Hapus" onClick={() => handleDeleteSuratJalan(item.id)}>
+                        <Trash2 size={16} className="text-red-400" />
                       </button>
                     </div>
                   </div>

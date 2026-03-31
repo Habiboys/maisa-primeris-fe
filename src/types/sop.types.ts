@@ -53,6 +53,8 @@ export interface TandaTerimaGudang {
   tanggal: string;
   supplier: string;
   penerima: string;
+  pengirim?: string;
+  mengetahui?: string;
   status: TTGStatus;
   createdAt?: string;
   items: TTGItem[];
@@ -74,6 +76,9 @@ export interface BarangKeluar {
   tujuan?: string;
   penerima?: string;
   project?: string;
+  projectId?: string;
+  disetujui?: string;
+  diperiksa?: string;
   status: BarangKeluarStatus;
   createdAt?: string;
   items: BarangKeluarItem[];
@@ -91,6 +96,9 @@ export interface InventarisLapangan {
   satuan?: string;
   tanggalCatat?: string;
   penanggungJawab?: string;
+  disetujui?: string;
+  diperiksa?: string;
+  logistik?: string;
   createdAt?: string;
   updatedAt?: string;
 }

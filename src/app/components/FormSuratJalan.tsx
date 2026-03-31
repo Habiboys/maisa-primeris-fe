@@ -9,7 +9,7 @@ interface BarangItem {
   namaBarang: string;
   satuan: string;
   jumlah: number;
-  keterangan: string;
+  keterangan?: string;
 }
 
 interface FormSuratJalanProps {

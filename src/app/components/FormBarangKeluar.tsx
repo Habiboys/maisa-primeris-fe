@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { sopService } from '../../services/sop.service';
 import { getErrorMessage } from '../../lib/utils';
 import { useMaterials } from '../../hooks/useMasterData';
+import { useProjects } from '../../hooks';
 
 interface MaterialItem {
   namaBarang: string;
@@ -20,9 +21,10 @@ interface FormBarangKeluarProps {
     id: string | number;
     noForm: string;
     tanggal: string;
-    tujuan: string;
-    penerima: string;
-    project: string;
+    tujuan?: string;
+    penerima?: string;
+    project?: string;
+    projectId?: string;
     items: MaterialItem[];
     disetujui?: string;
     diperiksa?: string;
@@ -36,11 +38,13 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
   data 
 }) => {
   const { materials } = useMaterials();
+  const { projects } = useProjects();
   const [formData, setFormData] = useState({
     noForm: data?.noForm || '',
     tujuan: data?.tujuan || '',
     penerima: data?.penerima || '',
     project: data?.project || '',
+    projectId: data?.projectId || '',
   });
 
   const [materialRows, setMaterialRows] = useState<MaterialItem[]>(
@@ -63,9 +67,10 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
     if (data) {
       setFormData({
         noForm: data.noForm || '',
-        tujuan: data.tujuan,
-        penerima: data.penerima,
-        project: data.project,
+        tujuan: data.tujuan || '',
+        penerima: data.penerima || '',
+        project: data.project || '',
+        projectId: data.projectId || '',
       });
       setMaterialRows(data.items || []);
       setDisetujui(data.disetujui || '');
@@ -76,7 +81,8 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
         noForm: `BK-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
         tujuan: '', 
         penerima: '', 
-        project: '' 
+        project: '',
+        projectId: ''
       });
       setMaterialRows([]);
       setDisetujui('');
@@ -117,6 +123,7 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
     tujuan: formData.tujuan,
     penerima: formData.penerima,
     project: formData.project,
+    projectId: formData.projectId,
     items: materialRows.map(r => ({ namaBarang: r.namaBarang, qty: r.qty, satuan: r.satuan })),
     disetujui,
     diperiksa,
@@ -148,7 +155,7 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
   };
 
   const handleSave = () => {
-    if (!formData.tujuan || !formData.penerima || !formData.project) {
+    if (!formData.tujuan || !formData.penerima || !formData.projectId) {
       toast.error('Tujuan, Penerima, dan Project harus diisi');
       return;
     }
@@ -264,13 +271,19 @@ export const FormBarangKeluar: React.FC<FormBarangKeluarProps> = ({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nama Project</label>
-                    <input
-                      type="text"
-                      value={formData.project}
-                      onChange={(e) => setFormData({ ...formData, project: e.target.value })}
+                    <select
+                      value={formData.projectId || ''}
+                      onChange={(e) => {
+                         const prj = projects.find(x => x.id === e.target.value);
+                         setFormData({ ...formData, projectId: e.target.value, project: prj ? prj.name : '' });
+                      }}
                       className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium"
-                      placeholder="Nama project..."
-                    />
+                    >
+                      <option value="">— Pilih Project —</option>
+                      {projects.map((p) => (
+                        <option value={p.id} key={p.id}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nama Penerima</label>

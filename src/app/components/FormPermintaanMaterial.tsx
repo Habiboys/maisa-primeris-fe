@@ -20,8 +20,8 @@ interface FormPermintaanProps {
     id: string | number;
     noForm: string;
     tanggal: string;
-    divisi: string;
-    namaPeminta: string;
+    divisi?: string;
+    namaPeminta?: string;
     items: MaterialItem[];
     disetujui?: string;
     diperiksa?: string;
@@ -63,8 +63,8 @@ export const FormPermintaanMaterial: React.FC<FormPermintaanProps> = ({
     if (data) {
       setFormData({
         noForm: data.noForm || '',
-        divisi: data.divisi,
-        namaPeminta: data.namaPeminta,
+        divisi: data.divisi || '',
+        namaPeminta: data.namaPeminta || '',
       });
       setMaterialRows(data.items || []);
       setDisetujui(data.disetujui || '');

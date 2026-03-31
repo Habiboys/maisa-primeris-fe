@@ -30,6 +30,9 @@ interface FormInventarisProps {
     satuan?: string;
     tanggalCatat?: string;
     penanggungJawab?: string;
+    disetujui?: string;
+    diperiksa?: string;
+    logistik?: string;
   } | null;
 }
 
@@ -62,6 +65,7 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
   const [kategori, setKategori] = useState('');
   const [disetujui, setDisetujui] = useState('');
   const [diperiksa, setDiperiksa] = useState('');
+  const [logistik, setLogistik] = useState('');
   const [penanggungJawab, setPenanggungJawab] = useState('');
 
   // Update form when data prop changes
@@ -82,11 +86,15 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
       setPenanggungJawab(data.penanggungJawab || '');
       setKode(data.kode || '');
       setKategori(data.kategori || '');
+      setDisetujui(data.disetujui || '');
+      setDiperiksa(data.diperiksa || '');
+      setLogistik(data.logistik || '');
     } else {
       setSingleItemMode(false);
       setInventarisRows([]);
       setDisetujui('');
       setDiperiksa('');
+      setLogistik('');
       setPenanggungJawab('');
       setKode('');
       setKategori('');
@@ -178,7 +186,10 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
           month: 'short', 
           year: 'numeric' 
         }),
-        penanggungJawab
+        penanggungJawab,
+        disetujui,
+        diperiksa,
+        logistik
       };
 
       // Include id if editing
@@ -202,6 +213,7 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
         items: filledItems,
         disetujui,
         diperiksa,
+        logistik,
         penanggungJawab,
         tanggal: new Date().toLocaleDateString('id-ID', { 
           day: '2-digit', 
@@ -450,8 +462,8 @@ export const FormInventarisLapangan: React.FC<FormInventarisProps> = ({
                   />
                   <input
                     type="text"
-                    value={penanggungJawab}
-                    onChange={(e) => setPenanggungJawab(e.target.value)}
+                    value={logistik}
+                    onChange={(e) => setLogistik(e.target.value)}
                     className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-primary/20 outline-none transition-all text-xs font-bold"
                     placeholder="Logistik / Gudang"
                   />
