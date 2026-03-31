@@ -35,7 +35,7 @@ export function Profile() {
   const [showNewPass, setShowNewPass] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
-  const { reset } = useCompanies();
+  const { reset } = useCompanies({ enabled: false });
   const [isResetting, setIsResetting] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetAnswer, setResetAnswer] = useState('');

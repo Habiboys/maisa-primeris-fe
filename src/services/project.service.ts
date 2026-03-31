@@ -151,6 +151,10 @@ export const projectService = {
     return res.data.data;
   },
 
+  async deleteWorkLog(projectId: string, logId: string): Promise<void> {
+    await api.delete(`/projects/${projectId}/work-logs/${logId}`);
+  },
+
   async deleteWorkLogPhoto(projectId: string, logId: string, photoId: string): Promise<void> {
     await api.delete(`/projects/${projectId}/work-logs/${logId}/photos/${photoId}`);
   },

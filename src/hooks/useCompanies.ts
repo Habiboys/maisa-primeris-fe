@@ -4,7 +4,8 @@ import { getErrorMessage } from '../lib/utils';
 import { companyService } from '../services';
 import type { Company, CompanyPayload, CompanySettingsPayload } from '../types';
 
-export function useCompanies(params?: { search?: string; is_active?: boolean }) {
+export function useCompanies(params?: { search?: string; is_active?: boolean; enabled?: boolean }) {
+  const enabled = params?.enabled ?? true;
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -21,8 +22,8 @@ export function useCompanies(params?: { search?: string; is_active?: boolean }) 
   }, [params]);
 
   useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+    if (enabled) fetchCompanies();
+  }, [fetchCompanies, enabled]);
 
   const create = async (payload: CompanyPayload) => {
     try {

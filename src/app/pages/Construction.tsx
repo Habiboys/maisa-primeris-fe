@@ -994,7 +994,9 @@ export function Construction() {
     setIsSavingWorkLog(true);
     try {
       if (editingLog) {
-        await projectService.updateWorkLog(selectedProjectId, String(editingLog.id), {
+        const logApiId = editingLog.apiLogId ?? String(editingLog.id);
+        
+        await projectService.updateWorkLog(selectedProjectId, logApiId, {
           unit_no: reportForm.unitNo,
           activity: reportForm.activity,
           worker_count: Number(reportForm.workers) || 0,
@@ -1004,7 +1006,6 @@ export function Construction() {
         } as Partial<import('../../types').WorkLog>);
 
         // Delete removed photos from server
-        const logApiId = editingLog.apiLogId ?? String(editingLog.id);
         for (const photoId of removedPhotoIds) {
           try { await projectService.deleteWorkLogPhoto(selectedProjectId, logApiId, photoId); } catch { /* skip */ }
         }
@@ -1068,13 +1069,26 @@ export function Construction() {
 
   const handleDeleteWorkLog = async (logId: number) => {
     if (await showConfirm({ title: 'Hapus Laporan', description: 'Apakah Anda yakin ingin menghapus laporan ini?' })) {
-      setProjects(prev => prev.map(p => {
-        if (p.id === selectedProjectId) {
-          return { ...p, logs: p.logs.filter(log => log.id !== logId) };
+      const project = projects.find(p => p.id === selectedProjectId);
+      const log = project?.logs.find(l => l.id === logId);
+      
+      if (log?.apiLogId) {
+        try {
+          await projectService.deleteWorkLog(selectedProjectId, log.apiLogId);
+          toast.success('Laporan berhasil dihapus');
+          await refreshProjectDetails(selectedProjectId);
+        } catch (e: any) {
+          toast.error(e?.response?.data?.message || e?.message || 'Gagal menghapus laporan');
         }
-        return p;
-      }));
-      toast.success('Laporan berhasil dihapus');
+      } else {
+        setProjects(prev => prev.map(p => {
+          if (p.id === selectedProjectId) {
+            return { ...p, logs: p.logs.filter(l => l.id !== logId) };
+          }
+          return p;
+        }));
+        toast.success('Laporan sementara dihapus');
+      }
     }
   };
 
