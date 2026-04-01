@@ -339,12 +339,8 @@ export function Marketing() {
     }
     setIsLoadingSvg(true);
     try {
-      const normalizedPath = svgPath.startsWith('/') ? svgPath : `/${svgPath}`;
-      const url = `/asset-proxy${normalizedPath}`;
-      console.log('[Siteplan SVG] fetching:', url);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Failed to fetch SVG: ${response.status} ${response.statusText}`);
-      let svgText = await response.text();
+      console.log('[Siteplan SVG] loading via API project id:', currentProject.id);
+      let svgText = await projectService.getLayoutSvgContent(currentProject.id);
 
       const unitColorMap = new Map(
         siteplanHousing.units.map(u => [u.unit_code, getHousingStatusColor(u.status)])

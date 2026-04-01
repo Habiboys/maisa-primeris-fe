@@ -1005,10 +1005,7 @@ export function Construction() {
     if (!svgPath || !selectedProject) return;
     setIsLoadingSvg(true);
     try {
-      const normalizedPath = svgPath.startsWith('/') ? svgPath : `/${svgPath}`;
-      const response = await fetch(`/asset-proxy${normalizedPath}`);
-      if (!response.ok) throw new Error('Failed to fetch SVG');
-      let svgText = await response.text();
+      let svgText = await projectService.getLayoutSvgContent(selectedProject.id);
 
       const unitColorMap = new Map(
         selectedProject.units.map(u => [u.no, getStatusColor(u.status)])

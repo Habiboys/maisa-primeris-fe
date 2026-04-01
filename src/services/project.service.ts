@@ -52,6 +52,13 @@ export const projectService = {
     return res.data.data;
   },
 
+  async getLayoutSvgContent(id: string): Promise<string> {
+    const res = await api.get<string>(`/projects/${id}/layout-svg-content`, {
+      responseType: 'text',
+    });
+    return res.data;
+  },
+
   // ── Project Units ────────────────────────────────────────────
   async getUnits(projectId: string): Promise<ProjectUnit[]> {
     const res = await api.get<ApiResponse<ProjectUnit[]>>(`/projects/${projectId}/units`);
