@@ -45,6 +45,13 @@ export const projectService = {
     await api.delete(`/projects/${id}`);
   },
 
+  async updateLayoutSvg(id: string, formData: FormData): Promise<Project> {
+    const res = await api.patch<ApiResponse<Project>>(`/projects/${id}/layout-svg`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.data;
+  },
+
   // ── Project Units ────────────────────────────────────────────
   async getUnits(projectId: string): Promise<ProjectUnit[]> {
     const res = await api.get<ApiResponse<ProjectUnit[]>>(`/projects/${projectId}/units`);

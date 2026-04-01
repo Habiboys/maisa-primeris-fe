@@ -33,6 +33,8 @@ export interface Project {
   unit_tipe?: string;
   // relasi yang bisa di-include
   units?: ProjectUnit[];
+  /** Path file SVG layout peta kawasan */
+  layout_svg?: string;
 }
 
 export interface ProjectUnit {

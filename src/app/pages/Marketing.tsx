@@ -5,8 +5,9 @@ import {
     Edit2,
     Filter,
     Home,
+    Loader2,
     Mail,
-    Map,
+    Map as MapIcon,
     MessageSquare,
     Phone,
     PieChart as PieChartIcon,
@@ -20,7 +21,7 @@ import {
     Wallet,
     XCircle,
 } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Area,
@@ -41,6 +42,7 @@ import { LEAD_STATUS_VALUES, type LeadStatus } from '../../constants/leadStatus'
 import { useConfirmDialog, useHousingUnits, useLeads, useMarketingPersons, useProjects } from '../../hooks';
 import { formatRupiah } from '../../lib/utils';
 import { marketingService } from '../../services/marketing.service';
+import { projectService } from '../../services/project.service';
 import type {
     CreateLeadPayload,
     CreateMarketingPersonPayload,
@@ -113,6 +115,12 @@ export function Marketing() {
   const { projects } = useProjects();
   const [siteplanProjectId, setSiteplanProjectId] = useState<string>('');
   const siteplanHousing = useHousingUnits(undefined, { limit: 500, project_id: siteplanProjectId || undefined });
+
+  // ── SVG Siteplan State ──────────────────────────────────────
+  const [isUploadingLayout, setIsUploadingLayout] = useState(false);
+  const [isLoadingSvg, setIsLoadingSvg] = useState(false);
+  const [svgContent, setSvgContent] = useState<string | null>(null);
+  const svgContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-select proyek pertama untuk siteplan (tidak ada opsi "Semua Proyek")
   useEffect(() => {
@@ -297,6 +305,177 @@ export function Marketing() {
     setIsAddModalOpen(true);
   };
 
+  // ── SVG Siteplan: Get status color for housing unit ────────
+  const getHousingStatusColor = (status: HousingUnit['status']): string => {
+    switch (status) {
+      case 'Tersedia': return '#22c55e'; // green-500
+      case 'Proses': return '#eab308';   // yellow-500
+      case 'Sold': return '#ef4444';     // red-500
+      default: return '#d1d5db';         // gray-300
+    }
+  };
+
+  // ── SVG Siteplan: Get text color for contrast ─────────────
+  const getHousingTextColor = (bgHex: string): string => {
+    const hex = (bgHex || '').trim().replace('#', '');
+    if (![3, 6].includes(hex.length)) return '#111827';
+    const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return luminance > 0.6 ? '#111827' : '#ffffff';
+  };
+
+  // ── SVG Siteplan: Load and color SVG by housing unit status ─
+  const selectedProject = projects?.find(p => p.id === siteplanProjectId);
+
+  const loadSvgWithUnitColors = async (svgPath: string) => {
+    // Re-resolve selectedProject inside to avoid stale closure
+    const currentProject = projects?.find(p => p.id === siteplanProjectId);
+    if (!svgPath || !currentProject) {
+      console.warn('[Siteplan SVG] skip — svgPath:', svgPath, 'currentProject:', currentProject?.name);
+      return;
+    }
+    setIsLoadingSvg(true);
+    try {
+      const baseUrl = import.meta.env.VITE_ASSET_URL ?? '';
+      const url = `${baseUrl}${svgPath}`;
+      console.log('[Siteplan SVG] fetching:', url);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch SVG: ${response.status} ${response.statusText}`);
+      let svgText = await response.text();
+
+      const unitColorMap = new Map(
+        siteplanHousing.units.map(u => [u.unit_code, getHousingStatusColor(u.status)])
+      );
+
+      svgText = svgText.replace(
+        /<path\b([^>]*?)(\/?)\s*>/g,
+        (match, attrs: string, selfClose: string) => {
+          const idMatch = attrs.match(/\bid="([^"]+)"/);
+          if (!idMatch) return match;
+          const unitId = idMatch[1];
+          const color = unitColorMap.get(unitId);
+          if (!color) return match;
+
+          const attrsWithoutStyle = attrs.replace(/\bstyle="[^"]*"/, '').trim();
+          let styleAttr = (attrs.match(/\bstyle="([^"]*)"/)?.[1] ?? '').trim();
+          const hasFill = /\bfill\s*:/.test(styleAttr);
+          const hasFillOpacity = /\bfill-opacity\s*:/.test(styleAttr);
+
+          if (hasFill) {
+            styleAttr = styleAttr.replace(/\bfill\s*:[^;]+;?/, `fill:${color};`);
+          } else {
+            styleAttr = `fill:${color};${styleAttr}`;
+          }
+
+          if (hasFillOpacity) {
+            styleAttr = styleAttr.replace(/\bfill-opacity\s*:[^;]+;?/, `fill-opacity:0.6;`);
+          } else {
+            styleAttr = `fill-opacity:0.6;${styleAttr}`;
+          }
+
+          return `<path ${attrsWithoutStyle} style="${styleAttr}"${selfClose}>`;
+        }
+      );
+
+      setSvgContent(svgText);
+    } catch (err) {
+      console.error('[Siteplan SVG] Error loading SVG:', err);
+      toast.error('Gagal memuat peta kawasan');
+      setSvgContent(null);
+    } finally {
+      setIsLoadingSvg(false);
+    }
+  };
+
+  // ── SVG Siteplan: Upload handler ───────────────────────────
+  const handleUploadLayoutSvg = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !siteplanProjectId) return;
+
+    const allowedTypes = ['image/svg+xml'];
+    if (!allowedTypes.includes(file.type) && !file.name.endsWith('.svg')) {
+      toast.error('Hanya file SVG yang diizinkan');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 10MB');
+      return;
+    }
+
+    setIsUploadingLayout(true);
+    try {
+      const formData = new FormData();
+      formData.append('layout_svg', file);
+      await projectService.updateLayoutSvg(siteplanProjectId, formData);
+      // Refresh projects to get updated layout_svg
+      const res = await projectService.getAll();
+      const updatedProject = res.data.find(p => p.id === siteplanProjectId);
+      if (updatedProject?.layout_svg) {
+        loadSvgWithUnitColors(updatedProject.layout_svg);
+      }
+      toast.success('Layout SVG berhasil diupload');
+    } catch {
+      /* error handled by service */
+    } finally {
+      setIsUploadingLayout(false);
+    }
+    e.target.value = '';
+  };
+
+  // ── SVG Siteplan: Load SVG when tab/view changes ───────────
+  useEffect(() => {
+    if (activeTab === 'siteplan' && selectedProject?.layout_svg) {
+      loadSvgWithUnitColors(selectedProject.layout_svg);
+    } else if (activeTab !== 'siteplan') {
+      setSvgContent(null);
+    }
+  }, [activeTab, selectedProject?.layout_svg, siteplanHousing.units]);
+
+  // ── SVG Siteplan: Event delegation handlers ─────────────────
+  const getUnitIdFromEvent = (e: React.MouseEvent): string | null => {
+    let target = e.target as Element | null;
+    while (target && target !== e.currentTarget) {
+      if (target.tagName.toLowerCase() === 'path' && target.getAttribute('id')) {
+        const unitId = target.getAttribute('id')!;
+        const unit = siteplanHousing.units.find(u => u.unit_code === unitId);
+        if (unit) return unitId;
+      }
+      target = target.parentElement;
+    }
+    return null;
+  };
+
+  const handleSvgClick = (e: React.MouseEvent) => {
+    const unitId = getUnitIdFromEvent(e);
+    if (!unitId) return;
+    const unit = siteplanHousing.units.find(u => u.unit_code === unitId);
+    if (unit) setSelectedUnit(unit);
+  };
+
+  const handleSvgMouseOver = (e: React.MouseEvent) => {
+    const target = e.target as Element;
+    if (target.tagName.toLowerCase() === 'path' && target.getAttribute('id')) {
+      const unitId = target.getAttribute('id')!;
+      if (siteplanHousing.units.find(u => u.unit_code === unitId)) {
+        (target as SVGPathElement).style.fillOpacity = '0.9';
+        (target as SVGPathElement).style.cursor = 'pointer';
+      }
+    }
+  };
+
+  const handleSvgMouseOut = (e: React.MouseEvent) => {
+    const target = e.target as Element;
+    if (target.tagName.toLowerCase() === 'path' && target.getAttribute('id')) {
+      const unitId = target.getAttribute('id')!;
+      if (siteplanHousing.units.find(u => u.unit_code === unitId)) {
+        (target as SVGPathElement).style.fillOpacity = '0.6';
+      }
+    }
+  };
+
   // ════════════════════════════════════════════════════════════
   // Render
   // ════════════════════════════════════════════════════════════
@@ -315,7 +494,7 @@ export function Marketing() {
           {([
             { key: 'leads', label: 'Leads', icon: Users },
             { key: 'team', label: 'Team', icon: Users },
-            { key: 'siteplan', label: 'Siteplan', icon: Map },
+            { key: 'siteplan', label: 'Siteplan', icon: MapIcon },
             { key: 'analytics', label: 'Analytics', icon: BarChart3 },
             { key: 'housing', label: 'Kavling & Unit', icon: Home },
           ] as const).map((tab) => (
@@ -691,55 +870,142 @@ export function Marketing() {
           {/* Main Siteplan View */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-6 flex gap-3 items-center">
-                <label className="text-xs font-bold text-gray-500 uppercase">Proyek</label>
-                <select
-                  value={siteplanProjectId}
-                  onChange={(e) => setSiteplanProjectId(e.target.value)}
-                  className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
-                >
-                  {(projects ?? []).map((p: Project) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <button className="p-2 bg-white border border-gray-100 rounded-lg shadow-sm hover:shadow-md transition-all">
-                  <Plus size={18} />
-                </button>
-                <button className="p-2 bg-white border border-gray-100 rounded-lg shadow-sm hover:shadow-md transition-all text-primary font-bold">
-                  75%
-                </button>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-bold">
+                    Peta Interaktif — {siteplanProjectId ? (projects?.find((p: Project) => p.id === siteplanProjectId)?.name ?? 'Proyek') : (user?.company?.settings?.app_name || 'Semua Proyek')}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">Data dari Kavling & Unit. Pilih proyek untuk menampilkan siteplan per proyek.</p>
+                </div>
+                <div className="flex gap-3 items-center">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Proyek</label>
+                  <select
+                    value={siteplanProjectId}
+                    onChange={(e) => setSiteplanProjectId(e.target.value)}
+                    className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    {(projects ?? []).map((p: Project) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {selectedProject?.layout_svg && (
+                    <span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded-lg">
+                      SVG Tersedia
+                    </span>
+                  )}
+                  <label className={`px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-primary/90 transition-colors inline-flex items-center gap-2 ${isUploadingLayout ? 'opacity-60 pointer-events-none' : ''}`}>
+                    {isUploadingLayout ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Mengupload...
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={14} />
+                        Upload SVG
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept=".svg,image/svg+xml"
+                      className="hidden"
+                      onChange={handleUploadLayoutSvg}
+                      disabled={isUploadingLayout}
+                    />
+                  </label>
+                </div>
               </div>
 
-              <h3 className="text-xl font-bold mb-8">
-                Peta Interaktif — {siteplanProjectId ? (projects?.find((p: Project) => p.id === siteplanProjectId)?.name ?? 'Proyek') : (user?.company?.settings?.app_name || 'Semua Proyek')}
-              </h3>
-              <p className="text-sm text-gray-500 mb-4">Data dari Kavling & Unit. Pilih proyek untuk menampilkan siteplan per proyek.</p>
+              {selectedProject?.layout_svg ? (
+                <div className="bg-gray-50 rounded-2xl border border-gray-200 p-4 overflow-hidden">
+                  {isLoadingSvg ? (
+                    <div className="flex items-center justify-center min-h-[400px]">
+                      <Loader2 size={32} className="animate-spin text-primary" />
+                    </div>
+                  ) : svgContent ? (
+                    <div
+                      ref={svgContainerRef}
+                      className="w-full overflow-auto max-h-[600px]"
+                      dangerouslySetInnerHTML={{ __html: svgContent }}
+                      onClick={handleSvgClick}
+                      onMouseOver={handleSvgMouseOver}
+                      onMouseOut={handleSvgMouseOut}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center min-h-[400px]">
+                      <p className="text-gray-500">Gagal memuat peta kawasan</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 md:p-12 flex flex-col items-center justify-center min-h-[300px] bg-gray-50">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                      <MapIcon size={32} className="text-gray-300" />
+                    </div>
+                    <h6 className="text-gray-900 font-bold mb-2">Belum Ada Peta Kawasan</h6>
+                    <p className="text-sm text-gray-500 text-center max-w-md mb-4">
+                      Upload file SVG untuk menampilkan peta kawasan visual.
+                      File SVG akan menggantikan tampilan grid default.
+                    </p>
+                    <div className="text-xs text-gray-400 mb-6">
+                      Format: .svg | Maks: 10MB
+                    </div>
+                    <label className={`px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-primary/90 transition-colors inline-flex items-center gap-2 ${isUploadingLayout ? 'opacity-60 pointer-events-none' : ''}`}>
+                      {isUploadingLayout ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Mengupload...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={14} />
+                          Pilih File SVG
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept=".svg,image/svg+xml"
+                        className="hidden"
+                        onChange={handleUploadLayoutSvg}
+                        disabled={isUploadingLayout}
+                      />
+                    </label>
+                  </div>
 
-              <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
-                {siteplanHousing.units.map((unit) => {
-                  const style = housingStatusStyle(unit.status);
-                  return (
-                    <button
-                      key={unit.id}
-                      onClick={() => setSelectedUnit(unit)}
-                      className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all hover:scale-105 active:scale-95 ${
-                        selectedUnit?.id === unit.id ? 'ring-4 ring-primary/20 border-primary shadow-lg' :
-                        `${style.bg} ${style.border} ${style.text}`
-                      }`}
-                    >
-                      <span className="text-[10px] font-black">{unit.unit_code}</span>
-                      <div className={`w-1.5 h-1.5 rounded-full mt-1 ${style.dot}`} />
-                    </button>
-                  );
-                })}
-              </div>
+                  {/* Default Grid Preview */}
+                  <div className="mt-8">
+                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-3 text-center">
+                      Preview Default (Grid)
+                    </p>
+                    <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
+                      {siteplanHousing.units.map((unit) => {
+                        const style = housingStatusStyle(unit.status);
+                        return (
+                          <button
+                            key={unit.id}
+                            onClick={() => setSelectedUnit(unit)}
+                            className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all hover:scale-105 active:scale-95 ${
+                              selectedUnit?.id === unit.id ? 'ring-4 ring-primary/20 border-primary shadow-lg' :
+                              `${style.bg} ${style.border} ${style.text}`
+                            }`}
+                          >
+                            <span className="text-[10px] font-black">{unit.unit_code}</span>
+                            <div className={`w-1.5 h-1.5 rounded-full mt-1 ${style.dot}`} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
 
-              {siteplanHousing.units.length === 0 && !siteplanHousing.isLoading && (
+              {siteplanHousing.units.length === 0 && !siteplanHousing.isLoading && !selectedProject?.layout_svg && (
                 <p className="text-center text-gray-500 py-8">Belum ada unit. Tambah unit di tab <strong>Kavling & Unit</strong>.</p>
               )}
 
               {/* Legend */}
-              <div className="mt-12 flex flex-wrap justify-center gap-8 bg-gray-50 p-6 rounded-2xl border border-dashed border-gray-200">
+              <div className="mt-8 flex flex-wrap justify-center gap-8 bg-gray-50 p-6 rounded-2xl border border-dashed border-gray-200">
                 {(['Tersedia', 'Proses', 'Sold'] as const).map((status) => {
                   const style = housingStatusStyle(status);
                   const count = siteplanHousing.units.filter((u) => u.status === status).length;
@@ -840,7 +1106,7 @@ export function Marketing() {
               ) : (
                 <div className="text-center py-12 space-y-4">
                   <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto text-primary/30">
-                    <Map size={32} />
+                    <MapIcon size={32} />
                   </div>
                   <p className="text-gray-400 text-sm font-medium">Pilih unit pada siteplan untuk melihat detail.</p>
                 </div>

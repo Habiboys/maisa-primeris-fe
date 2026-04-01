@@ -25,7 +25,7 @@ import {
   Users,
   X
 } from 'lucide-react';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -70,6 +70,7 @@ const mapApiProjectToUi = (project: ApiProject): Project => {
     inventory: {},
     logs: [],
     timeSchedule: [],
+    layout_svg: project.layout_svg,
   };
 };
 
@@ -598,6 +599,10 @@ export function Construction() {
   const [isSavingStandalone, setIsSavingStandalone] = useState(false);
   const [isSavingUpdateProgress, setIsSavingUpdateProgress] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
+  const [isUploadingLayout, setIsUploadingLayout] = useState(false);
+  const [svgContent, setSvgContent] = useState<string | null>(null);
+  const [isLoadingSvg, setIsLoadingSvg] = useState(false);
+  const svgContainerRef = useRef<HTMLDivElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'units' | 'inventory' | 'reports' | 'map' | 'schedule'>('units');
@@ -646,6 +651,17 @@ export function Construction() {
     photos: [] as string[]
   });
   const [reportFiles, setReportFiles] = useState<File[]>([]);
+
+  // Load SVG when switching to map tab or when project/units change
+  useEffect(() => {
+    if (activeTab === 'map' && selectedProject?.layout_svg) {
+      loadSvgWithUnitColors(selectedProject.layout_svg);
+    } else if (activeTab !== 'map') {
+      setSvgContent(null);
+    }
+  }, [activeTab, selectedProject?.layout_svg, selectedProject?.units]);
+
+
 
   // Helper: Convert status to progress percentage (dynamic from master data)
   const getProgressFromStatus = (statusName: string): number => {
@@ -960,6 +976,150 @@ export function Construction() {
 
     setShowEditStandaloneModal(false);
     setStandaloneForm({ name: '', location: '', deadline: '', status: 'On Progress' });
+  };
+
+  const handleUploadLayoutSvg = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedProjectId) return;
+    
+    const allowedTypes = ['image/svg+xml'];
+    if (!allowedTypes.includes(file.type) && !file.name.endsWith('.svg')) {
+      toast.error('Hanya file SVG yang diizinkan');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 10MB');
+      return;
+    }
+
+    setIsUploadingLayout(true);
+    try {
+      const formData = new FormData();
+      formData.append('layout_svg', file);
+      const updated = await projectService.updateLayoutSvg(selectedProjectId, formData);
+      setProjects(prev => prev.map(p => 
+        p.id === selectedProjectId ? { ...p, layout_svg: updated.layout_svg } : p
+      ));
+      toast.success('Layout SVG berhasil diupload');
+    } catch { 
+      /* error handled by service */
+    } finally {
+      setIsUploadingLayout(false);
+    }
+    e.target.value = '';
+  };
+
+  const loadSvgWithUnitColors = async (svgPath: string) => {
+    if (!svgPath || !selectedProject) return;
+    setIsLoadingSvg(true);
+    try {
+      const baseUrl = import.meta.env.VITE_ASSET_URL ?? '';
+      const response = await fetch(`${baseUrl}${svgPath}`);
+      if (!response.ok) throw new Error('Failed to fetch SVG');
+      let svgText = await response.text();
+
+      const unitColorMap = new Map(
+        selectedProject.units.map(u => [u.no, getStatusColor(u.status)])
+      );
+
+      svgText = svgText.replace(
+        /<path\b([^>]*?)(\/?)\s*>/g,
+        (match, attrs: string, selfClose: string) => {
+          // Extract the id from anywhere within the attributes
+          const idMatch = attrs.match(/\bid="([^"]+)"/);
+          if (!idMatch) return match;
+          const unitId = idMatch[1];
+
+          const color = unitColorMap.get(unitId);
+          if (!color) return match;
+
+          // Remove existing style attribute from attrs
+          const attrsWithoutStyle = attrs.replace(/\bstyle="[^"]*"/, '').trim();
+
+          // Build style: override fill and fill-opacity
+          let styleAttr = (attrs.match(/\bstyle="([^"]*)"/)?.[1] ?? '').trim();
+
+          const hasFill = /\bfill\s*:/.test(styleAttr);
+          const hasFillOpacity = /\bfill-opacity\s*:/.test(styleAttr);
+
+          if (hasFill) {
+            styleAttr = styleAttr.replace(/\bfill\s*:[^;]+;?/, `fill:${color};`);
+          } else {
+            styleAttr = `fill:${color};${styleAttr}`;
+          }
+
+          if (hasFillOpacity) {
+            styleAttr = styleAttr.replace(/\bfill-opacity\s*:[^;]+;?/, `fill-opacity:0.6;`);
+          } else {
+            styleAttr = `fill-opacity:0.6;${styleAttr}`;
+          }
+
+          return `<path ${attrsWithoutStyle} style="${styleAttr}"${selfClose}>`;
+        }
+      );
+
+      setSvgContent(svgText);
+    } catch {
+      toast.error('Gagal memuat peta kawasan');
+      setSvgContent(null);
+    } finally {
+      setIsLoadingSvg(false);
+    }
+  };
+
+  // --- SVG Event Delegation Handlers ---
+  // Use event delegation on the container div instead of attaching listeners
+  // to individual path elements. This survives React re-renders of dangerouslySetInnerHTML.
+  const getUnitIdFromEvent = (e: React.MouseEvent): string | null => {
+    let target = e.target as Element | null;
+    // Walk up to find a <path> with an id (handles clicking on child elements)
+    while (target && target !== e.currentTarget) {
+      if (target.tagName.toLowerCase() === 'path' && target.getAttribute('id')) {
+        const unitId = target.getAttribute('id')!;
+        const unit = selectedProject?.units.find(u => u.no === unitId);
+        if (unit) return unitId;
+      }
+      target = target.parentElement;
+    }
+    return null;
+  };
+
+  const handleSvgClick = (e: React.MouseEvent) => {
+    const unitId = getUnitIdFromEvent(e);
+    if (!unitId) return;
+    const currentUnit = selectedProject?.units.find(u => u.no === unitId);
+    if (!currentUnit) return;
+
+    setEditingUnit(currentUnit);
+    setUnitForm({
+      no: currentUnit.no,
+      tipe: currentUnit.tipe ?? '',
+      status: currentUnit.status ?? '',
+      qcTemplateId: currentUnit.qcTemplateId ?? '',
+    });
+    setShowUnitModal(true);
+  };
+
+  const handleSvgMouseOver = (e: React.MouseEvent) => {
+    const target = e.target as Element;
+    if (target.tagName.toLowerCase() === 'path' && target.getAttribute('id')) {
+      const unitId = target.getAttribute('id')!;
+      if (selectedProject?.units.find(u => u.no === unitId)) {
+        (target as SVGPathElement).style.fillOpacity = '0.9';
+        (target as SVGPathElement).style.cursor = 'pointer';
+      }
+    }
+  };
+
+  const handleSvgMouseOut = (e: React.MouseEvent) => {
+    const target = e.target as Element;
+    if (target.tagName.toLowerCase() === 'path' && target.getAttribute('id')) {
+      const unitId = target.getAttribute('id')!;
+      if (selectedProject?.units.find(u => u.no === unitId)) {
+        (target as SVGPathElement).style.fillOpacity = '0.6';
+      }
+    }
   };
 
   const handleSaveUpdateProgress = async () => {
@@ -2268,59 +2428,130 @@ export function Construction() {
               )}
 
               {activeTab === 'map' && (
-                <div className="bg-gray-50 rounded-2xl p-4 md:p-12 flex flex-col items-center justify-center min-h-[500px] border-2 border-dashed border-gray-200 animate-in fade-in duration-300">
-                  <div className="w-full max-w-3xl bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
-                    <div className="flex items-center justify-between mb-10">
-                      <h5 className="font-bold text-gray-900 flex items-center gap-2">
-                        <MapIcon size={20} className="text-primary" />
-                        Visual Map: {selectedProject.name}
-                      </h5>
-                      <div className="flex gap-2">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase">
-                          <div
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ backgroundColor: legendColors.selesaiColor }}
-                          ></div>{' '}
-                          Selesai
+                <div className="bg-gray-50 rounded-2xl p-4 md:p-8 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between mb-6">
+                    <h5 className="font-bold text-gray-900 flex items-center gap-2">
+                      <MapIcon size={20} className="text-primary" />
+                      Peta Kawasan: {selectedProject.name}
+                    </h5>
+                    <div className="flex items-center gap-3">
+                      {selectedProject.layout_svg && (
+                        <span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded-lg">
+                          SVG Tersedia
+                        </span>
+                      )}
+                      <label className={`px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-primary/90 transition-colors inline-flex items-center gap-2 ${isUploadingLayout ? 'opacity-60 pointer-events-none' : ''}`}>
+                        {isUploadingLayout ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Mengupload...
+                          </>
+                        ) : (
+                          <>
+                            <Plus size={14} />
+                            Upload SVG
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept=".svg,image/svg+xml"
+                          className="hidden"
+                          onChange={handleUploadLayoutSvg}
+                          disabled={isUploadingLayout}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {selectedProject.layout_svg ? (
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4 overflow-hidden">
+                      {isLoadingSvg ? (
+                        <div className="flex items-center justify-center min-h-[400px]">
+                          <Loader2 size={32} className="animate-spin text-primary" />
                         </div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase">
-                          <div
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ backgroundColor: legendColors.diprosesColor }}
-                          ></div>{' '}
-                          Diproses
+                      ) : svgContent ? (
+                        <div 
+                          ref={svgContainerRef}
+                          className="w-full overflow-auto max-h-[600px]"
+                          dangerouslySetInnerHTML={{ __html: svgContent }}
+                          onClick={handleSvgClick}
+                          onMouseOver={handleSvgMouseOver}
+                          onMouseOut={handleSvgMouseOut}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center min-h-[400px]">
+                          <p className="text-gray-500">Gagal memuat peta kawasan</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 md:p-12 flex flex-col items-center justify-center min-h-[400px] bg-gray-50">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                        <MapIcon size={32} className="text-gray-300" />
+                      </div>
+                      <h6 className="text-gray-900 font-bold mb-2">Belum Ada Peta Kawasan</h6>
+                      <p className="text-sm text-gray-500 text-center max-w-md mb-4">
+                        Upload file SVG untuk menampilkan peta kawasan visual. 
+                        File SVG akan menggantikan tampilan grid default.
+                      </p>
+                      <div className="text-xs text-gray-400 mb-6">
+                        Format: .svg | Maks: 10MB
+                      </div>
+                      <label className={`px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-primary/90 transition-colors inline-flex items-center gap-2 ${isUploadingLayout ? 'opacity-60 pointer-events-none' : ''}`}>
+                        {isUploadingLayout ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Mengupload...
+                          </>
+                        ) : (
+                          <>
+                            <Plus size={14} />
+                            Pilih File SVG
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept=".svg,image/svg+xml"
+                          className="hidden"
+                          onChange={handleUploadLayoutSvg}
+                          disabled={isUploadingLayout}
+                        />
+                      </label>
+
+                      <div className="mt-8 w-full max-w-2xl">
+                        <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-3 text-center">
+                          Preview Default (Grid)
+                        </p>
+                        <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+                          {Array.from({ length: 32 }).map((_, i) => {
+                            const unit = selectedProject.units[i];
+                            const hasUnit = Boolean(unit);
+                            return (
+                              <div
+                                key={i}
+                                className={`aspect-square rounded-lg border flex items-center justify-center text-[10px] font-bold transition-all ${
+                                  hasUnit
+                                    ? 'border-2 hover:shadow-md'
+                                    : 'bg-gray-100 border-gray-200 text-gray-300'
+                                }`}
+                                style={
+                                  hasUnit
+                                    ? {
+                                        backgroundColor: getStatusColor(unit.status),
+                                        borderColor: getStatusColor(unit.status),
+                                        color: getReadableTextColor(getStatusColor(unit.status)),
+                                      }
+                                    : undefined
+                                }
+                              >
+                                {hasUnit ? unit.no : ''}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
-                    
-                    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-3">
-                      {Array.from({ length: 32 }).map((_, i) => {
-                        const unit = selectedProject.units[i];
-                        const hasUnit = Boolean(unit);
-                        return (
-                          <div
-                            key={i}
-                            className={`aspect-square rounded-xl border-2 flex items-center justify-center text-[10px] font-bold transition-all ${
-                              hasUnit
-                                ? 'hover:shadow-lg'
-                                : 'bg-gray-50 border-gray-200 text-gray-300'
-                            }`}
-                            style={
-                              hasUnit
-                                ? {
-                                    backgroundColor: getStatusColor(unit.status),
-                                    borderColor: getStatusColor(unit.status),
-                                    color: getReadableTextColor(getStatusColor(unit.status)),
-                                  }
-                                : undefined
-                            }
-                          >
-                            {hasUnit ? unit.no : ''}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
