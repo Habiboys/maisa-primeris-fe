@@ -632,9 +632,6 @@ export function Construction() {
   const [standaloneForm, setStandaloneForm] = useState({ name: '', location: '', deadline: '', status: 'On Progress' });
   const [unitForm, setUnitForm] = useState({ no: '', tipe: '', status: '', qcTemplateId: '' });
   const [editingLog, setEditingLog] = useState<WorkLog | null>(null);
-  // Track existing server photos to delete when editing
-  const [existingPhotos, setExistingPhotos] = useState<{ id: string; url: string }[]>([]);
-  const [removedPhotoIds, setRemovedPhotoIds] = useState<string[]>([]);
   const [reportForm, setReportForm] = useState({ 
     unitNo: '', 
     activity: '', 
@@ -726,8 +723,6 @@ export function Construction() {
         status: (wl.status as WorkLog['status']) ?? 'Normal',
         weather: wl.weather as WorkLog['weather'],
         photos: (wl.photos?.map((p: any) => `${import.meta.env.VITE_ASSET_URL ?? ''}${p.photo_url}`) ?? []).filter(Boolean),
-        photoData: (wl.photos ?? []).map((p: any) => ({ id: p.id, url: `${import.meta.env.VITE_ASSET_URL ?? ''}${p.photo_url}` })),
-        apiLogId: wl.id,
       }));
 
       // Map API inventory logs → UI inventory (grouped by unit_no)
@@ -773,8 +768,6 @@ export function Construction() {
         status: (wl.status as WorkLog['status']) ?? 'Normal',
         weather: wl.weather as WorkLog['weather'],
         photos: (wl.photos?.map((p: any) => `${import.meta.env.VITE_ASSET_URL ?? ''}${p.photo_url}`) ?? []).filter(Boolean),
-        photoData: (wl.photos ?? []).map((p: any) => ({ id: p.id, url: `${import.meta.env.VITE_ASSET_URL ?? ''}${p.photo_url}` })),
-        apiLogId: wl.id,
       }));
 
       const uiInventory: { [unitNo: string]: InventoryLog[] } = {};
@@ -994,9 +987,7 @@ export function Construction() {
     setIsSavingWorkLog(true);
     try {
       if (editingLog) {
-        const logApiId = editingLog.apiLogId ?? String(editingLog.id);
-        
-        await projectService.updateWorkLog(selectedProjectId, logApiId, {
+        await projectService.updateWorkLog(selectedProjectId, String(editingLog.id), {
           unit_no: reportForm.unitNo,
           activity: reportForm.activity,
           worker_count: Number(reportForm.workers) || 0,
@@ -1004,19 +995,6 @@ export function Construction() {
           status: reportForm.status,
           weather: reportForm.weather,
         } as Partial<import('../../types').WorkLog>);
-
-        // Delete removed photos from server
-        for (const photoId of removedPhotoIds) {
-          try { await projectService.deleteWorkLogPhoto(selectedProjectId, logApiId, photoId); } catch { /* skip */ }
-        }
-
-        // Upload new photos if any
-        if (reportFiles.length > 0) {
-          const fd = new FormData();
-          reportFiles.forEach((file) => fd.append('photos', file));
-          try { await projectService.addWorkLogPhotos(selectedProjectId, logApiId, fd); } catch { /* skip */ }
-        }
-
         toast.success('Laporan berhasil diperbarui');
       } else {
         const formData = new FormData();
@@ -1043,17 +1021,12 @@ export function Construction() {
     setShowReportModal(false);
     setEditingLog(null);
     setReportFiles([]);
-    setExistingPhotos([]);
-    setRemovedPhotoIds([]);
     setReportForm({ unitNo: '', activity: '', workers: '', progress: '', date: new Date().toISOString().split('T')[0], status: 'Normal', weather: 'Cerah', photos: [] });
   };
 
   const handleEditWorkLog = (log: WorkLog) => {
     setEditingLog(log);
     setReportFiles([]);
-    // Set existing server photos for tracking deletion
-    setExistingPhotos(log.photoData ?? []);
-    setRemovedPhotoIds([]);
     setReportForm({
       unitNo: log.unitNo,
       activity: log.activity,
@@ -1069,26 +1042,13 @@ export function Construction() {
 
   const handleDeleteWorkLog = async (logId: number) => {
     if (await showConfirm({ title: 'Hapus Laporan', description: 'Apakah Anda yakin ingin menghapus laporan ini?' })) {
-      const project = projects.find(p => p.id === selectedProjectId);
-      const log = project?.logs.find(l => l.id === logId);
-      
-      if (log?.apiLogId) {
-        try {
-          await projectService.deleteWorkLog(selectedProjectId, log.apiLogId);
-          toast.success('Laporan berhasil dihapus');
-          await refreshProjectDetails(selectedProjectId);
-        } catch (e: any) {
-          toast.error(e?.response?.data?.message || e?.message || 'Gagal menghapus laporan');
+      setProjects(prev => prev.map(p => {
+        if (p.id === selectedProjectId) {
+          return { ...p, logs: p.logs.filter(log => log.id !== logId) };
         }
-      } else {
-        setProjects(prev => prev.map(p => {
-          if (p.id === selectedProjectId) {
-            return { ...p, logs: p.logs.filter(l => l.id !== logId) };
-          }
-          return p;
-        }));
-        toast.success('Laporan sementara dihapus');
-      }
+        return p;
+      }));
+      toast.success('Laporan berhasil dihapus');
     }
   };
 
@@ -2711,21 +2671,8 @@ export function Construction() {
                       <img src={url} className="w-full h-full object-cover" alt="preview" />
                       <button 
                         onClick={() => {
-                          // Check if this is an existing server photo
-                          const existingCount = existingPhotos.filter(ep => !removedPhotoIds.includes(ep.id)).length;
-                          if (i < existingCount) {
-                            // This is an existing server photo — track its ID for deletion
-                            const visibleExisting = existingPhotos.filter(ep => !removedPhotoIds.includes(ep.id));
-                            const photoToRemove = visibleExisting[i];
-                            if (photoToRemove) {
-                              setRemovedPhotoIds(prev => [...prev, photoToRemove.id]);
-                            }
-                          } else {
-                            // This is a newly added photo — remove from reportFiles
-                            const newPhotoIndex = i - existingCount;
-                            setReportFiles(prev => prev.filter((_, idx) => idx !== newPhotoIndex));
-                          }
                           setReportForm(prev => ({ ...prev, photos: prev.photos.filter((_, idx) => idx !== i) }));
+                          setReportFiles(prev => prev.filter((_, idx) => idx !== i));
                         }}
                         className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                       >

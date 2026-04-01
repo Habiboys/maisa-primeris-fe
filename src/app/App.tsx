@@ -279,9 +279,6 @@ export default function App() {
           { label: 'Data Project', path: '/data-master/projects', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
           { label: 'Template QC', path: '/data-master/qc-templates', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
           { label: 'Status Konstruksi', path: '/data-master/construction-statuses', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
-          { label: 'Divisi / Departemen', path: '/data-master/departments', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
-          { label: 'Material', path: '/data-master/materials', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
-          { label: 'Skema Pembayaran', path: '/data-master/payment-schemes', roles: ['Platform Owner', 'Super Admin', 'Project Management', 'Finance'] },
         ],
       },
       { id: 'finance', label: 'Finance & Accounting', icon: Wallet, path: '/finance', roles: ['Platform Owner', 'Super Admin', 'Finance'] },
@@ -378,9 +375,6 @@ export default function App() {
         <Route path="data-master/projects" element={<DataMaster />} />
         <Route path="data-master/qc-templates" element={<DataMaster />} />
         <Route path="data-master/construction-statuses" element={<DataMaster />} />
-        <Route path="data-master/departments" element={<DataMaster />} />
-        <Route path="data-master/materials" element={<DataMaster />} />
-        <Route path="data-master/payment-schemes" element={<DataMaster />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Route>
     </Routes>
