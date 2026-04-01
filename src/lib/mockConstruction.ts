@@ -76,6 +76,7 @@ export interface Project {
   timeSchedule?: TimeScheduleItem[]; // untuk standalone buildings
   qcTemplateId?: string; // reference to QC template untuk standalone
   constructionStatus?: string; // status konstruksi untuk standalone
+  layout_svg?: string; // path file SVG layout peta kawasan
 }
 
 // Mock project data dipindahkan dari Construction.tsx
