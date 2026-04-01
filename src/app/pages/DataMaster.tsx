@@ -6,6 +6,7 @@ import {
   Home,
   Layers,
   Loader2,
+  MapIcon,
   MapPin,
   Package,
   Plus,
@@ -21,7 +22,7 @@ import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useDepartments, useHousingUnits, useMaterials, usePaymentSchemes, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
 import { formatDateId } from '../../lib/date';
 import { formatRupiah } from '../../lib/utils';
-import { housingService } from '../../services';
+import { housingService, projectService } from '../../services';
 import { departmentService } from '../../services/department.service';
 import { materialService } from '../../services/material.service';
 import { paymentSchemeService } from '../../services/paymentScheme.service';
@@ -245,6 +246,7 @@ export function DataMaster() {
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [isSavingUnit, setIsSavingUnit] = useState(false);
   const [isSavingKavling, setIsSavingKavling] = useState(false);
+  const [layoutSvgFile, setLayoutSvgFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (masterSection !== 'projects') setSelectedProjectId(null);
@@ -401,6 +403,7 @@ export function DataMaster() {
       deadline: '',
       status: 'On Progress',
     });
+    setLayoutSvgFile(null);
     setShowProjectModal(true);
   };
 
@@ -415,6 +418,7 @@ export function DataMaster() {
       deadline: toDateInputValue(p.deadline),
       status: p.status,
     });
+    setLayoutSvgFile(null);
     setShowProjectModal(true);
   };
 
@@ -426,6 +430,8 @@ export function DataMaster() {
     if (isSavingProject) return;
     setIsSavingProject(true);
     try {
+      let projectId = editingProject?.id;
+
       if (editingProject) {
         await updateProject(editingProject.id, {
           name: projectForm.name,
@@ -462,10 +468,19 @@ export function DataMaster() {
           status: projectForm.status,
           budget_cap: projectForm.budget_cap || null,
         } as Partial<Project>);
+        projectId = created.id;
         setSelectedProjectId(created.id);
       }
+
+      if (layoutSvgFile && projectId) {
+        const fd = new FormData();
+        fd.append('layout_svg', layoutSvgFile);
+        await projectService.updateLayoutSvg(projectId, fd);
+      }
+
       setShowProjectModal(false);
       setEditingProject(null);
+      setLayoutSvgFile(null);
       await refetchProjects();
       await refetchUnits();
     } catch {
@@ -1580,6 +1595,55 @@ export function DataMaster() {
               className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="contoh: 500000000"
             />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">Layout SVG (Peta Kawasan)</label>
+            <label className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-primary/50 transition-all ${layoutSvgFile ? 'border-primary/50 bg-primary/5' : ''}`}>
+              {layoutSvgFile ? (
+                <div className="flex flex-col items-center gap-1">
+                  <MapIcon size={24} className="text-primary" />
+                  <span className="text-xs font-bold text-primary">{layoutSvgFile.name}</span>
+                  <span className="text-[10px] text-gray-500">{(layoutSvgFile.size / 1024).toFixed(1)} KB</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <MapIcon size={24} className="text-gray-400 mb-2" />
+                  <p className="text-xs text-gray-500 font-bold">Klik untuk upload SVG</p>
+                  <p className="text-[10px] text-gray-400">Format: .svg | Maks: 10MB</p>
+                </div>
+              )}
+              <input
+                type="file"
+                accept=".svg,image/svg+xml"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    if (file.size > 10 * 1024 * 1024) {
+                      toast.error('Ukuran file maksimal 10MB');
+                      return;
+                    }
+                    const allowedTypes = ['image/svg+xml'];
+                    if (!allowedTypes.includes(file.type) && !file.name.endsWith('.svg')) {
+                      toast.error('Hanya file SVG yang diizinkan');
+                      return;
+                    }
+                    setLayoutSvgFile(file);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            {layoutSvgFile && (
+              <button
+                type="button"
+                onClick={() => setLayoutSvgFile(null)}
+                className="text-xs text-red-600 font-bold hover:underline mt-1"
+              >
+                Hapus file
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2 mt-2">
