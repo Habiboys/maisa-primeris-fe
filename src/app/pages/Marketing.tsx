@@ -37,8 +37,8 @@ import {
     YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
-import { useAuth } from '../../context/AuthContext';
 import { LEAD_STATUS_VALUES, type LeadStatus } from '../../constants/leadStatus';
+import { useAuth } from '../../context/AuthContext';
 import { useConfirmDialog, useHousingUnits, useLeads, useMarketingPersons, useProjects } from '../../hooks';
 import { formatRupiah } from '../../lib/utils';
 import { marketingService } from '../../services/marketing.service';
@@ -339,8 +339,8 @@ export function Marketing() {
     }
     setIsLoadingSvg(true);
     try {
-      const baseUrl = import.meta.env.VITE_ASSET_URL ?? '';
-      const url = `${baseUrl}${svgPath}`;
+      const normalizedPath = svgPath.startsWith('/') ? svgPath : `/${svgPath}`;
+      const url = `/asset-proxy${normalizedPath}`;
       console.log('[Siteplan SVG] fetching:', url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Failed to fetch SVG: ${response.status} ${response.statusText}`);

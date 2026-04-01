@@ -1,41 +1,39 @@
 import {
-  AlertTriangle as AlertTriangleIcon,
-  Box,
-  Calendar,
-  CheckCircle2 as CheckCircle2Icon,
-  ChevronRight,
-  ClipboardList,
-  Clock as ClockIcon,
-  Construction as ConstructionIcon,
-  Edit2,
-  Filter,
-  History as HistoryIcon,
-  Home,
-  Info,
-  LayoutGrid,
-  Loader2,
-  Map as MapIcon,
-  MapPin,
-  Pencil,
-  Plus,
-  Search,
-  Settings,
-  Trash2,
-  TrendingUp,
-  Users,
-  X
+    AlertTriangle as AlertTriangleIcon,
+    Box,
+    Calendar,
+    CheckCircle2 as CheckCircle2Icon,
+    ChevronRight,
+    ClipboardList,
+    Clock as ClockIcon,
+    Construction as ConstructionIcon,
+    Edit2,
+    Filter,
+    History as HistoryIcon,
+    Home,
+    Info,
+    LayoutGrid,
+    Loader2,
+    Map as MapIcon,
+    MapPin,
+    Pencil,
+    Plus,
+    Search,
+    Settings,
+    TrendingUp,
+    Users,
+    X
 } from 'lucide-react';
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
 import { useConfirmDialog, useConstructionStatuses, useProjects, useQCTemplates } from '../../hooks';
+import { formatDateId } from '../../lib/date';
 import { type ConstructionStatus, type InventoryLog, type Project, type ProjectUnit, type WorkLog } from '../../lib/mockConstruction';
 import { compressImageToFile } from '../../lib/utils';
-import { formatDateId } from '../../lib/date';
 import { projectService } from '../../services';
 import type { ConstructionStatus as ApiCS, Project as ApiProject, ProjectUnit as ApiProjectUnit } from '../../types';
-import { QCTemplateManager } from '../components/QCTemplateManager';
 import { QualityControl } from '../components/QualityControl';
 import { Modal } from '../components/ui/Modal';
 import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
@@ -1007,8 +1005,8 @@ export function Construction() {
     if (!svgPath || !selectedProject) return;
     setIsLoadingSvg(true);
     try {
-      const baseUrl = import.meta.env.VITE_ASSET_URL ?? '';
-      const response = await fetch(`${baseUrl}${svgPath}`);
+      const normalizedPath = svgPath.startsWith('/') ? svgPath : `/${svgPath}`;
+      const response = await fetch(`/asset-proxy${normalizedPath}`);
       if (!response.ok) throw new Error('Failed to fetch SVG');
       let svgText = await response.text();
 

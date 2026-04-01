@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/asset-proxy/:path*",
+      "destination": "https://api-maisa.oblixpilates.com/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
