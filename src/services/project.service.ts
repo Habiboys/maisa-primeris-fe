@@ -6,15 +6,15 @@
 import api from '../lib/api';
 import { cleanParams } from '../lib/utils';
 import type {
-  ApiResponse,
-  ConstructionStatus,
-  InventoryLog,
-  PaginatedResponse,
-  Project,
-  ProjectUnit,
-  TimeScheduleItem,
-  UnitBlockRange,
-  WorkLog,
+    ApiResponse,
+    ConstructionStatus,
+    InventoryLog,
+    PaginatedResponse,
+    Project,
+    ProjectUnit,
+    TimeScheduleItem,
+    UnitBlockRange,
+    WorkLog,
 } from '../types';
 
 export const projectService = {
