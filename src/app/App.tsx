@@ -30,7 +30,12 @@ import { useConfirmDialog } from '../hooks';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { Absensi } from './pages/Absensi';
 import { Construction as ConstructionModule } from './pages/Construction';
-import { DataMaster } from './pages/DataMaster';
+import { DataMasterConstructionStatuses } from './pages/DataMasterConstructionStatuses';
+import { DataMasterDepartments } from './pages/DataMasterDepartments';
+import { DataMasterMaterials } from './pages/DataMasterMaterials';
+import { DataMasterPaymentSchemes } from './pages/DataMasterPaymentSchemes';
+import { DataMasterProjects } from './pages/DataMasterProjects';
+import { DataMasterQCTemplates } from './pages/DataMasterQCTemplates';
 import { Dashboard } from './pages/Dashboard';
 import { Finance } from './pages/Finance';
 import { ForgotPassword } from './pages/ForgotPassword';
@@ -279,6 +284,9 @@ export default function App() {
           { label: 'Data Project', path: '/data-master/projects', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
           { label: 'Template QC', path: '/data-master/qc-templates', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
           { label: 'Status Konstruksi', path: '/data-master/construction-statuses', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Divisi / Departemen', path: '/data-master/departments', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Master Material', path: '/data-master/materials', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
+          { label: 'Payment Scheme', path: '/data-master/payment-schemes', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
         ],
       },
       { id: 'finance', label: 'Finance & Accounting', icon: Wallet, path: '/finance', roles: ['Platform Owner', 'Super Admin', 'Finance'] },
@@ -372,9 +380,12 @@ export default function App() {
             />
           )
         )}
-        <Route path="data-master/projects" element={<DataMaster />} />
-        <Route path="data-master/qc-templates" element={<DataMaster />} />
-        <Route path="data-master/construction-statuses" element={<DataMaster />} />
+        <Route path="data-master/projects" element={<DataMasterProjects />} />
+        <Route path="data-master/qc-templates" element={<DataMasterQCTemplates />} />
+        <Route path="data-master/construction-statuses" element={<DataMasterConstructionStatuses />} />
+        <Route path="data-master/departments" element={<DataMasterDepartments />} />
+        <Route path="data-master/materials" element={<DataMasterMaterials />} />
+        <Route path="data-master/payment-schemes" element={<DataMasterPaymentSchemes />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Route>
     </Routes>

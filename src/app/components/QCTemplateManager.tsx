@@ -232,9 +232,9 @@ export function QCTemplateManager({
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="w-full">
       {ConfirmDialogElement}
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -245,12 +245,17 @@ export function QCTemplateManager({
               <p className="text-sm text-gray-500">Kelola template checklist Quality Control</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="w-5 h-5" />
-          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            >
+              Kembali
+            </button>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 p-6">
           {!isCreating && !editingTemplate ? (
             <div>
               <div className="flex items-center justify-between mb-6">

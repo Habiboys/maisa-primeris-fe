@@ -66,14 +66,27 @@ import { QCTemplateManager } from '../components/QCTemplateManager';
 import { Modal } from '../components/ui/Modal';
 import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
 
+type DataMasterSection =
+  | 'projects'
+  | 'qc-templates'
+  | 'construction-statuses'
+  | 'departments'
+  | 'materials'
+  | 'payment-schemes';
+
+interface DataMasterProps {
+  section?: DataMasterSection;
+}
+
 /* ──────────────────────────────────────────────────────────────
  *  Main DataMaster Component
  * ────────────────────────────────────────────────────────────── */
-export function DataMaster() {
+export function DataMaster({ section }: DataMasterProps) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const masterSection = useMemo(() => {
+  const masterSection = useMemo<DataMasterSection>(() => {
+    if (section) return section;
     const p = location.pathname.replace(/\/$/, '');
     if (p.endsWith('/qc-templates')) return 'qc-templates' as const;
     if (p.endsWith('/construction-statuses')) return 'construction-statuses' as const;
@@ -81,7 +94,7 @@ export function DataMaster() {
     if (p.endsWith('/materials')) return 'materials' as const;
     if (p.endsWith('/payment-schemes')) return 'payment-schemes' as const;
     return 'projects' as const;
-  }, [location.pathname]);
+  }, [location.pathname, section]);
 
   // ── State: drill-down view ──────────────────────────────────
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
