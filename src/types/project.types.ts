@@ -78,6 +78,7 @@ export interface TimeScheduleItem {
 export interface InventoryLog {
   id: string;
   project_id: string;
+  material_id?: string;
   unit_no?: string;
   date: string;
   item: string;
@@ -85,6 +86,11 @@ export interface InventoryLog {
   unit_satuan?: string;
   type: 'in' | 'out';
   person?: string;
+  material?: {
+    id: string;
+    name: string;
+    unit: string;
+  };
   created_at: string;
 }
 

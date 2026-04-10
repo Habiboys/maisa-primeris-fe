@@ -1,26 +1,26 @@
 import {
-    Building2,
-    Clock,
-    Construction,
-    Database,
-    FileText,
-    LayoutDashboard,
-    LogOut,
-    Megaphone,
-    Menu,
-    Receipt,
-    User,
-    Users,
-    Wallet
+  Building2,
+  Clock,
+  Construction,
+  Database,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Menu,
+  Receipt,
+  User,
+  Users,
+  Wallet
 } from 'lucide-react';
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-    Navigate,
-    Outlet,
-    Route,
-    Routes,
-    useLocation,
-    useNavigate,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
 } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import logoMini from "../assets/61cebe8f7139be169da0e497fe1e0c50a3adec15.png";
@@ -30,13 +30,13 @@ import { useConfirmDialog } from '../hooks';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { Absensi } from './pages/Absensi';
 import { Construction as ConstructionModule } from './pages/Construction';
+import { Dashboard } from './pages/Dashboard';
 import { DataMasterConstructionStatuses } from './pages/DataMasterConstructionStatuses';
 import { DataMasterDepartments } from './pages/DataMasterDepartments';
 import { DataMasterMaterials } from './pages/DataMasterMaterials';
 import { DataMasterPaymentSchemes } from './pages/DataMasterPaymentSchemes';
 import { DataMasterProjects } from './pages/DataMasterProjects';
 import { DataMasterQCTemplates } from './pages/DataMasterQCTemplates';
-import { Dashboard } from './pages/Dashboard';
 import { Finance } from './pages/Finance';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { Login } from './pages/Login';
@@ -44,8 +44,8 @@ import { Marketing } from './pages/Marketing';
 import { Profile } from './pages/Profile';
 import { ResetPassword } from './pages/ResetPassword';
 import { SaaSManagement } from './pages/SaaSManagement';
-import { TenantDetail } from './pages/TenantDetail';
 import { SOP } from './pages/SOP';
+import { TenantDetail } from './pages/TenantDetail';
 import { Transaksi } from './pages/Transaksi';
 import { UserManagement } from './pages/UserManagement';
 

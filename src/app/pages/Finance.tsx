@@ -683,7 +683,7 @@ export function Finance() {
           )}
 
           {activeTab === 'monitoring' && (
-            <FinanceMonitoring onDetail={setSelectedDetailId} onAddConsumer={openAddReceivableModal} />
+            <FinanceMonitoring consumers={piutangList} onDetail={setSelectedDetailId} onAddConsumer={openAddReceivableModal} />
           )}
         </div>
 

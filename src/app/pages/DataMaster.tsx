@@ -27,6 +27,10 @@ import { departmentService } from '../../services/department.service';
 import { materialService } from '../../services/material.service';
 import { paymentSchemeService } from '../../services/paymentScheme.service';
 import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit, UnitBlockRange } from '../../types';
+import { ConstructionStatusManagerPanel } from '../components/ConstructionStatusManagerPanel';
+import { QCTemplateManager } from '../components/QCTemplateManager';
+import { Modal } from '../components/ui/Modal';
+import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
 
 function totalUnitsFromBlockRows(rows: Array<{ prefix: string; start: string; end: string }>): number {
   let t = 0;
@@ -61,10 +65,6 @@ function previewUnitBlocks(rows: Array<{ prefix: string; start: string; end: str
     })
     .join(' · ');
 }
-import { ConstructionStatusManagerPanel } from '../components/ConstructionStatusManagerPanel';
-import { QCTemplateManager } from '../components/QCTemplateManager';
-import { Modal } from '../components/ui/Modal';
-import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
 
 type DataMasterSection =
   | 'projects'

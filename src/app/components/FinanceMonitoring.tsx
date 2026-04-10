@@ -5,8 +5,8 @@ import {
   Phone,
   Plus
 } from 'lucide-react';
-import { useConsumers } from '../../hooks';
 import { formatRupiah } from '../../lib/utils';
+import type { Consumer } from '../../types';
 
 interface BillingItem {
   id: string;
@@ -30,15 +30,15 @@ interface MonitoringData {
 }
 
 export function FinanceMonitoring({
+  consumers,
   onDetail,
   onAddConsumer,
 }: {
+  consumers: Consumer[];
   onDetail: (id: string) => void;
   /** Sama dengan aksi "Tambah Piutang" di tab lama — buka modal data konsumen */
   onAddConsumer?: () => void;
 }) {
-  const { consumers } = useConsumers();
-
   const data: MonitoringData[] = consumers.map((c, idx) => ({
     id: c.id,
     no: idx + 1,

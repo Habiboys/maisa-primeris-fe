@@ -28,7 +28,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
-import { useConfirmDialog, useConstructionStatuses, useProjects, useQCTemplates } from '../../hooks';
+import { useConfirmDialog, useConstructionStatuses, useMaterials, useProjects, useQCTemplates } from '../../hooks';
 import { formatDateId } from '../../lib/date';
 import { type ConstructionStatus, type InventoryLog, type Project, type ProjectUnit, type WorkLog } from '../../lib/mockConstruction';
 import { compressImageToFile } from '../../lib/utils';
@@ -533,6 +533,7 @@ const initialProjects: Project[] = [
 export function Construction() {
   const { projects: apiProjects, create: apiCreateProject, update: apiUpdateProject, remove: apiRemoveProject, refetch: refetchProjects } = useProjects();
   const { statuses: apiStatuses, create: apiCreateStatus, update: apiUpdateStatus, remove: apiRemoveStatus } = useConstructionStatuses();
+  const { materials: masterMaterials } = useMaterials();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -612,9 +613,11 @@ export function Construction() {
   const [selectedUnitForInventory, setSelectedUnitForInventory] = useState<string>('All');
   const [inventoryForm, setInventoryForm] = useState({
     unitNo: '',
+    materialId: '',
     item: '',
     qty: '',
     unit: '',
+    person: '',
     type: 'out' as 'in' | 'out'
   });
   const [showChecklistForm, setShowChecklistForm] = useState(false);
@@ -708,6 +711,11 @@ export function Construction() {
   const filteredProjects = projects.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.location.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const materialOptions = useMemo(
+    () => masterMaterials.slice().sort((a, b) => a.name.localeCompare(b.name, 'id')),
+    [masterMaterials]
   );
 
   const handleOpenProject = async (project: Project) => {
@@ -810,8 +818,8 @@ export function Construction() {
     const selectedProj = projects.find(p => p.id === selectedProjectId);
     const unitNoToUse = selectedProj?.type === 'standalone' ? 'main' : inventoryForm.unitNo;
     
-    if (!unitNoToUse || !inventoryForm.item || !inventoryForm.qty) {
-      toast.error('Mohon lengkapi semua data mutasi (Pilih Unit, Item, dan Jumlah)');
+    if (!unitNoToUse || !inventoryForm.materialId || !inventoryForm.qty || !inventoryForm.person.trim()) {
+      toast.error('Mohon lengkapi semua data mutasi (Pilih Unit, Item, Jumlah, dan PIC)');
       return;
     }
 
@@ -822,11 +830,10 @@ export function Construction() {
       await projectService.createInventoryLog(selectedProjectId, {
         unit_no: unitNoToUse,
         date: new Date().toISOString().slice(0, 10),
-        item: inventoryForm.item,
+        material_id: inventoryForm.materialId,
         qty: Number(inventoryForm.qty),
-        unit_satuan: inventoryForm.unit || 'Unit',
         type: inventoryForm.type,
-        person: 'Admin Logistik',
+        person: inventoryForm.person.trim(),
       } as Partial<import('../../types').InventoryLog>);
       await refreshProjectDetails(selectedProjectId);
     } catch {
@@ -836,7 +843,7 @@ export function Construction() {
     }
 
     setShowInventoryModal(false);
-    setInventoryForm({ unitNo: '', item: '', qty: '', unit: '', type: 'out' });
+    setInventoryForm({ unitNo: '', materialId: '', item: '', qty: '', unit: '', person: 'Admin Logistik', type: 'out' });
   };
 
   const handleSaveProject = async () => {
@@ -2653,13 +2660,29 @@ export function Construction() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-500 uppercase">Nama Material</label>
-            <input 
-              type="text" 
-              placeholder="Contoh: Keramik 40x40" 
+            <select
               className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-              value={inventoryForm.item}
-              onChange={(e) => setInventoryForm({ ...inventoryForm, item: e.target.value })}
-            />
+              value={inventoryForm.materialId}
+              onChange={(e) => {
+                const selected = materialOptions.find((m) => m.id === e.target.value);
+                setInventoryForm({
+                  ...inventoryForm,
+                  materialId: e.target.value,
+                  item: selected?.name ?? '',
+                  unit: selected?.unit ?? '',
+                });
+              }}
+            >
+              <option value="">-- Pilih Material Master --</option>
+              {materialOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            {materialOptions.length === 0 && (
+              <p className="text-xs text-amber-600">Master material belum tersedia. Tambahkan di Data Master &gt; Master Material.</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -2677,11 +2700,21 @@ export function Construction() {
               <input
                 type="text"
                 value={inventoryForm.unit}
-                onChange={(e) => setInventoryForm({ ...inventoryForm, unit: e.target.value })}
+                readOnly
                 placeholder="Contoh: Sak, Kg, Meter, Pcs"
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-4 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm outline-none"
               />
             </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">PIC Lapangan</label>
+            <input
+              type="text"
+              value={inventoryForm.person}
+              onChange={(e) => setInventoryForm({ ...inventoryForm, person: e.target.value })}
+              placeholder="Contoh: Mandor Arie"
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
           </div>
           <button 
             type="button"
