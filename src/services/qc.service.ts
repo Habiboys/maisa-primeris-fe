@@ -98,8 +98,16 @@ export const qcService = {
     await api.delete(`/qc-submissions/${id}`);
   },
 
-  async exportSubmission(id: string): Promise<unknown> {
-    const res = await api.get<ApiResponse<unknown>>(`/qc-submissions/${id}/export`);
-    return res.data.data;
+  async exportSubmission(id: string): Promise<Blob> {
+    const res = await api.get(`/qc-submissions/${id}/export`, { responseType: 'blob' });
+    return res.data as Blob;
+  },
+
+  async exportProjectSubmissions(projectId: string, params?: { unit_no?: string }): Promise<Blob> {
+    const res = await api.get(`/qc-submissions-export/project/${projectId}`, {
+      params: params ? cleanParams(params as Record<string, unknown>) : undefined,
+      responseType: 'blob',
+    });
+    return res.data as Blob;
   },
 };

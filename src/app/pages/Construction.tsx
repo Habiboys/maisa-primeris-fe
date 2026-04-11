@@ -1,28 +1,29 @@
 import {
-    AlertTriangle as AlertTriangleIcon,
-    Box,
-    Calendar,
-    CheckCircle2 as CheckCircle2Icon,
-    ChevronRight,
-    ClipboardList,
-    Clock as ClockIcon,
-    Construction as ConstructionIcon,
-    Edit2,
-    Filter,
-    History as HistoryIcon,
-    Home,
-    Info,
-    LayoutGrid,
-    Loader2,
-    Map as MapIcon,
-    MapPin,
-    Pencil,
-    Plus,
-    Search,
-    Settings,
-    TrendingUp,
-    Users,
-    X
+  AlertTriangle as AlertTriangleIcon,
+  Box,
+  Calendar,
+  CheckCircle2 as CheckCircle2Icon,
+  ChevronRight,
+  ClipboardList,
+  Clock as ClockIcon,
+  Construction as ConstructionIcon,
+  Edit2,
+  Filter,
+  History as HistoryIcon,
+  Home,
+  Info,
+  LayoutGrid,
+  Loader2,
+  Map as MapIcon,
+  MapPin,
+  Pencil,
+  Plus,
+  Printer,
+  Search,
+  Settings,
+  TrendingUp,
+  Users,
+  X
 } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -32,7 +33,7 @@ import { useConfirmDialog, useConstructionStatuses, useMaterials, useProjects, u
 import { formatDateId } from '../../lib/date';
 import { type ConstructionStatus, type InventoryLog, type Project, type ProjectUnit, type WorkLog } from '../../lib/mockConstruction';
 import { compressImageToFile } from '../../lib/utils';
-import { projectService } from '../../services';
+import { projectService, qcService } from '../../services';
 import type { ConstructionStatus as ApiCS, Project as ApiProject, ProjectUnit as ApiProjectUnit } from '../../types';
 import { QualityControl } from '../components/QualityControl';
 import { Modal } from '../components/ui/Modal';
@@ -598,6 +599,7 @@ export function Construction() {
   const [isSavingStandalone, setIsSavingStandalone] = useState(false);
   const [isSavingUpdateProgress, setIsSavingUpdateProgress] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
+  const [isPrintingQc, setIsPrintingQc] = useState(false);
   const [isUploadingLayout, setIsUploadingLayout] = useState(false);
   const [svgContent, setSvgContent] = useState<string | null>(null);
   const [isLoadingSvg, setIsLoadingSvg] = useState(false);
@@ -717,6 +719,43 @@ export function Construction() {
     () => masterMaterials.slice().sort((a, b) => a.name.localeCompare(b.name, 'id')),
     [masterMaterials]
   );
+
+  const triggerBlobDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrintQcByUnit = async (unitNo: string) => {
+    if (!selectedProjectId || !selectedProject) return;
+    setIsPrintingQc(true);
+    try {
+      const blob = await qcService.exportProjectSubmissions(selectedProjectId, { unit_no: unitNo });
+      triggerBlobDownload(blob, `qc-${selectedProject.name}-${unitNo}.xlsx`);
+    } catch {
+      toast.error('Gagal export QC unit dari server.');
+    } finally {
+      setIsPrintingQc(false);
+    }
+  };
+
+  const handlePrintQcAllUnits = async () => {
+    if (!selectedProjectId || !selectedProject) return;
+    setIsPrintingQc(true);
+    try {
+      const blob = await qcService.exportProjectSubmissions(selectedProjectId);
+      triggerBlobDownload(blob, `qc-${selectedProject.name}-semua-unit.xlsx`);
+    } catch {
+      toast.error('Gagal export QC semua unit dari server.');
+    } finally {
+      setIsPrintingQc(false);
+    }
+  };
 
   const handleOpenProject = async (project: Project) => {
     setSelectedProjectId(project.id);
@@ -1501,9 +1540,20 @@ export function Construction() {
                       /* Unit Cards View */
                       <>
                         {/* Header Unit Project */}
-                        <div>
-                          <h3 className="font-bold text-gray-900">Unit Project</h3>
-                          <p className="text-sm text-gray-500 mt-1">Total {selectedProject.units.length} unit rumah</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h3 className="font-bold text-gray-900">Unit Project</h3>
+                            <p className="text-sm text-gray-500 mt-1">Total {selectedProject.units.length} unit rumah</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handlePrintQcAllUnits}
+                            disabled={isPrintingQc}
+                            className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 inline-flex items-center gap-2 disabled:opacity-60"
+                          >
+                            {isPrintingQc ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+                            Export QC Excel (Semua Unit)
+                          </button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -1568,6 +1618,18 @@ export function Construction() {
                       
                       {/* QC Action Area */}
                       <div className="mt-auto px-3 pb-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handlePrintQcByUnit(unit.no);
+                          }}
+                          disabled={isPrintingQc}
+                          className="w-full mb-2 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 disabled:opacity-60"
+                        >
+                          {isPrintingQc ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+                          Export QC Excel
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

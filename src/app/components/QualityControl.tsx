@@ -1,31 +1,32 @@
 import {
-  ArrowLeft,
-  Calendar,
-  Camera,
-  CheckCircle2 as CheckCircle2Icon,
-  CheckCircle as CheckCircleIcon,
-  ChevronDown,
-  ChevronUp,
-  Download,
-  Eye,
-  FileText,
-  Filter,
-  History as HistoryIcon,
-  LayoutList,
-  Save,
-  Search,
-  Send,
-  Trash2,
-  User as UserIcon,
-  XCircle as XCircleIcon
+    ArrowLeft,
+    Calendar,
+    Camera,
+    CheckCircle2 as CheckCircle2Icon,
+    CheckCircle as CheckCircleIcon,
+    ChevronDown,
+    ChevronUp,
+    Download,
+    Eye,
+    FileText,
+    Filter,
+    History as HistoryIcon,
+    LayoutList,
+    Save,
+    Search,
+    Send,
+    Trash2,
+    User as UserIcon,
+    XCircle as XCircleIcon
 } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirmDialog, useQCSubmissions, useQCTemplates } from '../../hooks';
 import { formatDateTimeId } from '../../lib/date';
-import { compressImage } from '../../lib/utils';
+import { compressImage, resolveAssetUrl } from '../../lib/utils';
 import { qcService } from '../../services';
 import type { QcSubmission, QcSubmissionInput, QcTemplate } from '../../types';
+import { ImagePreviewModal } from './ImagePreviewModal';
 
 type ChecklistItemState = {
   id: string;
@@ -79,6 +80,7 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
   const [viewDetail, setViewDetail] = useState<QcSubmission | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
   const draftLoadedRef = useRef(false);
   // Tracks the ID of an existing Draft that was pre-filled into the form,
   // so we UPDATE it instead of creating a duplicate.
@@ -283,6 +285,11 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
     }
   };
 
+  const openImagePreview = (src: string | null, title: string) => {
+    if (!src) return;
+    setImagePreview({ src, title });
+  };
+
   const buildPayloadResults = (): NonNullable<QcSubmissionInput['results']> => {
     return sections.flatMap(section =>
       section.items.map(item => ({
@@ -476,12 +483,20 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                                 <div className="flex justify-center relative group/photo">
                                   {item.photo ? (
                                     <div className="relative">
-                                      <img 
-                                        src={item.photo} 
-                                        alt="QC" 
-                                        className="w-10 h-10 object-cover rounded-lg border border-gray-200" 
-                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => openImagePreview(item.photo, `Preview QC ${item.description}`)}
+                                        className="block"
+                                        title="Klik untuk preview"
+                                      >
+                                        <img 
+                                          src={resolveAssetUrl(item.photo) ?? item.photo} 
+                                          alt="QC" 
+                                          className="w-10 h-10 object-cover rounded-lg border border-gray-200 hover:ring-2 hover:ring-primary/40 transition-all" 
+                                        />
+                                      </button>
                                       <button 
+                                        type="button"
                                         onClick={() => updateItem(section.id, item.id, 'photo', null)}
                                         className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/photo:opacity-100 transition-opacity"
                                       >
@@ -561,6 +576,14 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
             </button>
           </div>
         </div>
+
+        <ImagePreviewModal
+          open={Boolean(imagePreview)}
+          src={imagePreview?.src ?? null}
+          title={imagePreview?.title ?? 'Preview Gambar'}
+          downloadFileName={`qc-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
+          onClose={() => setImagePreview(null)}
+        />
       </div>
     );
   }
@@ -809,6 +832,15 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                     </h4>
                     <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
                       <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                            <th className="px-4 py-3 w-8">No</th>
+                            <th className="px-4 py-3">Checklist</th>
+                            <th className="px-4 py-3 w-32">Hasil</th>
+                            <th className="px-4 py-3 w-24 text-center">Foto</th>
+                            <th className="px-4 py-3">Catatan</th>
+                          </tr>
+                        </thead>
                         <tbody className="divide-y divide-gray-50">
                           {section.items.map((item, idx) => (
                             <tr key={item.id} className="text-sm">
@@ -822,6 +854,19 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                                 }`}>
                                   {item.result || '-'}
                                 </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {item.photo_url ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openImagePreview(item.photo_url ?? null, `Preview QC ${item.description}`)}
+                                    className="text-xs font-semibold text-primary hover:underline"
+                                  >
+                                    Lihat Gambar
+                                  </button>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
                               </td>
                               <td className="px-4 py-3 italic text-gray-400">{item.notes || '-'}</td>
                             </tr>
@@ -848,6 +893,14 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
           </div>
         </div>
       )}
+
+      <ImagePreviewModal
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src ?? null}
+        title={imagePreview?.title ?? 'Preview Gambar'}
+        downloadFileName={`qc-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
+        onClose={() => setImagePreview(null)}
+      />
     </div>
   );
 }

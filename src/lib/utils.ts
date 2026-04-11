@@ -127,11 +127,16 @@ export function cleanParams(params: Record<string, unknown>): Record<string, str
  */
 export function resolveAssetUrl(assetPath?: string | null): string | null {
   if (!assetPath) return null;
-  if (/^https?:\/\//i.test(assetPath)) return assetPath;
+  const value = assetPath.trim();
+  if (!value) return null;
+
+  // URL absolut atau skema non-http yang valid harus dipakai apa adanya
+  // contoh: data:image/jpeg;base64,... atau blob:...
+  if (/^(https?:)?\/\//i.test(value) || /^(data:|blob:)/i.test(value)) return value;
 
   const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
   const origin = new URL(apiBase).origin;
-  const normalized = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+  const normalized = value.startsWith('/') ? value : `/${value}`;
   return `${origin}${normalized}`;
 }
 

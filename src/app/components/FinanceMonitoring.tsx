@@ -1,9 +1,9 @@
 import {
-  ChevronRight,
-  FileText,
-  Home,
-  Phone,
-  Plus
+    ChevronRight,
+    FileText,
+    Home,
+    Phone,
+    Plus
 } from 'lucide-react';
 import { formatRupiah } from '../../lib/utils';
 import type { Consumer } from '../../types';
