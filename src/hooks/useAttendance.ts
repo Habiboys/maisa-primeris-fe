@@ -266,13 +266,15 @@ export function useAttendanceRecap(month: number, year: number) {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      const monthStr = String(month).padStart(2, '0');
+      const lastDayInMonth = new Date(year, month, 0).getDate();
       const [attRes, leaveRes] = await Promise.all([
         attendanceService.getAll({ month, year, limit: 500 }),
         attendanceService.getLeaveRequests({
           status: 'Disetujui',
           type: 'Cuti',
-          start_date: `${year}-${String(month).padStart(2, '0')}-01`,
-          end_date: `${year}-${String(month).padStart(2, '0')}-31`,
+          start_date: `${year}-${monthStr}-01`,
+          end_date: `${year}-${monthStr}-${String(lastDayInMonth).padStart(2, '0')}`,
           limit: 500,
         }),
       ]);
