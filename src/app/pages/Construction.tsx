@@ -554,7 +554,7 @@ export function Construction() {
     id: cs.id,
     name: cs.name,
     progress: cs.progress ?? 0,
-    color: cs.color ?? 'bg-blue-50 text-blue-600',
+    color: cs.color ?? '#3b82f6',
     order: cs.order_index ?? 0,
   });
 
@@ -590,7 +590,7 @@ export function Construction() {
 
   const [showStatusManager, setShowStatusManager] = useState(false);
   const [editingStatus, setEditingStatus] = useState<ConstructionStatus | null>(null);
-  const [statusForm, setStatusForm] = useState({ name: '', progress: '', color: 'bg-blue-50 text-blue-600' });
+  const [statusForm, setStatusForm] = useState({ name: '', progress: '', color: '#3b82f6' });
 
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [isSavingUnit, setIsSavingUnit] = useState(false);
@@ -659,7 +659,7 @@ export function Construction() {
     } else if (activeTab !== 'map') {
       setSvgContent(null);
     }
-  }, [activeTab, selectedProject?.layout_svg, selectedProject?.units]);
+  }, [activeTab, selectedProject?.layout_svg, selectedProject?.units, constructionStatuses]);
 
 
 
@@ -672,8 +672,23 @@ export function Construction() {
   // Helper: Map construction status -> hex color (from master data)
   // Note: `construction_statuses.color` tersimpan sebagai HEX color, bukan Tailwind class.
   const getStatusColor = (statusName: string): string => {
-    const status = constructionStatuses.find(s => s.name === statusName);
-    return status?.color ?? '#e5e7eb'; // default: gray-200
+    const status = constructionStatuses.find(s => s.name?.trim().toLowerCase() === statusName?.trim().toLowerCase());
+    const rawColor = (status?.color ?? '').trim();
+
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(rawColor)) return rawColor;
+
+    // Backward compatibility: beberapa data lama menyimpan Tailwind class, bukan HEX.
+    const tailwindToHex: Record<string, string> = {
+      'bg-gray-100 text-gray-600': '#9ca3af',
+      'bg-red-50 text-red-600': '#dc2626',
+      'bg-orange-50 text-orange-600': '#ea580c',
+      'bg-yellow-50 text-yellow-700': '#a16207',
+      'bg-green-50 text-green-600': '#16a34a',
+      'bg-blue-50 text-blue-600': '#2563eb',
+      'bg-indigo-50 text-indigo-600': '#4f46e5',
+      'bg-purple-50 text-purple-600': '#9333ea',
+    };
+    return tailwindToHex[rawColor] ?? '#e5e7eb'; // default: gray-200
   };
 
   const getReadableTextColor = (bgHex: string): string => {
@@ -1268,7 +1283,7 @@ export function Construction() {
   // Construction Status Manager Handlers
   const handleAddStatus = () => {
     setEditingStatus(null);
-    setStatusForm({ name: '', progress: '', color: 'bg-blue-50 text-blue-600' });
+    setStatusForm({ name: '', progress: '', color: '#3b82f6' });
     setShowStatusManager(true);
   };
 
@@ -1310,7 +1325,7 @@ export function Construction() {
     }
 
     setEditingStatus(null);
-    setStatusForm({ name: '', progress: '', color: 'bg-blue-50 text-blue-600' });
+    setStatusForm({ name: '', progress: '', color: '#3b82f6' });
   };
 
   const handleDeleteStatus = async (statusId: string) => {
