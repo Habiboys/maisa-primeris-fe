@@ -1,20 +1,20 @@
 import {
-  ArrowLeft,
-  Building2,
-  ChevronRight,
-  Edit2,
-  Home,
-  Layers,
-  Loader2,
-  MapIcon,
-  MapPin,
-  Package,
-  Plus,
-  Search,
-  Trash2,
-  UsersRound,
-  Wallet,
-  X,
+    ArrowLeft,
+    Building2,
+    ChevronRight,
+    Edit2,
+    Home,
+    Layers,
+    Loader2,
+    MapIcon,
+    MapPin,
+    Package,
+    Plus,
+    Search,
+    Trash2,
+    UsersRound,
+    Wallet,
+    X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -336,6 +336,7 @@ export function DataMaster({ section }: DataMasterProps) {
   });
 
   const [kavlingPhotoFile, setKavlingPhotoFile] = useState<File | null>(null);
+  const [kavlingSertifikatFile, setKavlingSertifikatFile] = useState<File | null>(null);
 
   // ── Sinkronkan housing_units untuk project konstruksi ─────
   // Tujuan: pastikan setiap `project_unit` punya 1 record housing unit (one-to-one),
@@ -393,6 +394,7 @@ export function DataMaster({ section }: DataMasterProps) {
               id_rumah: null,
               no_sertifikat: null,
               photo_url: null,
+              sertifikat_file_url: null,
             } as any);
           }
         }
@@ -601,6 +603,7 @@ export function DataMaster({ section }: DataMasterProps) {
               id_rumah: null,
               no_sertifikat: null,
               photo_url: null,
+              sertifikat_file_url: null,
             } as any);
           }
         } catch {
@@ -650,6 +653,7 @@ export function DataMaster({ section }: DataMasterProps) {
               id_rumah: null,
               no_sertifikat: null,
               photo_url: null,
+              sertifikat_file_url: null,
             } as any);
           } else if ((existingUnit as any).project_id !== selectedProjectId) {
             // relink project_id juga supaya kavling muncul di daftar proyek yang benar
@@ -671,6 +675,7 @@ export function DataMaster({ section }: DataMasterProps) {
               id_rumah: null,
               no_sertifikat: null,
               photo_url: null,
+              sertifikat_file_url: null,
             } as any);
           }
         } catch {
@@ -720,6 +725,7 @@ export function DataMaster({ section }: DataMasterProps) {
       notes: unit.notes ?? '',
     });
     setKavlingPhotoFile(null);
+    setKavlingSertifikatFile(null);
     setShowKavlingModal(true);
   };
 
@@ -728,7 +734,7 @@ export function DataMaster({ section }: DataMasterProps) {
     if (isSavingKavling) return;
     setIsSavingKavling(true);
     try {
-      if (kavlingPhotoFile) {
+      if (kavlingPhotoFile || kavlingSertifikatFile) {
         const fd = new FormData();
         fd.append('status', kavlingForm.status ?? 'Tersedia');
         if (kavlingForm.luas_tanah != null) fd.append('luas_tanah', String(kavlingForm.luas_tanah));
@@ -743,10 +749,12 @@ export function DataMaster({ section }: DataMasterProps) {
         if (kavlingForm.id_rumah) fd.append('id_rumah', kavlingForm.id_rumah);
         if (kavlingForm.no_sertifikat) fd.append('no_sertifikat', kavlingForm.no_sertifikat);
         if (kavlingForm.notes) fd.append('notes', kavlingForm.notes);
-        fd.append('photo', kavlingPhotoFile);
+        if (kavlingPhotoFile) fd.append('photo', kavlingPhotoFile);
+        if (kavlingSertifikatFile) fd.append('sertifikat_file', kavlingSertifikatFile);
 
         await kavlingHousing.update(editingKavling.id, fd as any);
         setKavlingPhotoFile(null);
+        setKavlingSertifikatFile(null);
       } else {
         await kavlingHousing.update(editingKavling.id, kavlingForm as any);
       }
@@ -1756,7 +1764,12 @@ export function DataMaster({ section }: DataMasterProps) {
       {/* Kavling Edit Modal */}
       <Modal
         isOpen={showKavlingModal}
-        onClose={() => { setShowKavlingModal(false); setEditingKavling(null); }}
+        onClose={() => {
+          setShowKavlingModal(false);
+          setEditingKavling(null);
+          setKavlingPhotoFile(null);
+          setKavlingSertifikatFile(null);
+        }}
         title={`Detail Kavling ${editingKavling?.unit_code ?? ''}`}
         wide
       >
@@ -1937,6 +1950,34 @@ export function DataMaster({ section }: DataMasterProps) {
             </div>
           </div>
 
+          {/* File Sertifikat */}
+          <div className="space-y-2">
+            <h4 className="font-bold text-gray-900 border-l-4 border-primary pl-3">File Sertifikat</h4>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => setKavlingSertifikatFile(e.target.files?.[0] ?? null)}
+              className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary/10 file:text-primary file:font-medium"
+            />
+            <p className="text-xs text-gray-500">Format: PDF/JPG/JPEG/PNG (maks. 5MB)</p>
+            <div className="text-sm">
+              {kavlingSertifikatFile ? (
+                <span className="text-primary font-medium">File dipilih: {kavlingSertifikatFile.name}</span>
+              ) : editingKavling?.sertifikat_file_url ? (
+                <a
+                  href={`${import.meta.env.VITE_ASSET_URL ?? ''}${editingKavling.sertifikat_file_url}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Lihat file sertifikat saat ini
+                </a>
+              ) : (
+                <span className="text-gray-400">Belum ada file sertifikat</span>
+              )}
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <button
               type="button"
@@ -1948,7 +1989,12 @@ export function DataMaster({ section }: DataMasterProps) {
               {isSavingKavling ? 'Menyimpan...' : 'Simpan Detail'}
             </button>
             <button
-              onClick={() => { setShowKavlingModal(false); setEditingKavling(null); }}
+              onClick={() => {
+                setShowKavlingModal(false);
+                setEditingKavling(null);
+                setKavlingPhotoFile(null);
+                setKavlingSertifikatFile(null);
+              }}
               className="px-6 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300 transition-colors"
             >
               Batal

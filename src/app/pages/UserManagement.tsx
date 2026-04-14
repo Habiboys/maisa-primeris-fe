@@ -162,6 +162,7 @@ export function UserManagement() {
                   <option>Super Admin</option>
                   <option>Finance</option>
                   <option>Project Management</option>
+                  <option>Sekretaris</option>
                 </select>
                 <select 
                   className="bg-white border border-gray-200 rounded-lg text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
@@ -369,6 +370,7 @@ export function UserManagement() {
                   {isPlatformOwner && <option value="Platform Owner">Platform Owner</option>}
                   <option value="Project Management">Project Management</option>
                   <option value="Finance">Finance</option>
+                  <option value="Sekretaris">Sekretaris</option>
                   <option value="Super Admin">Super Admin</option>
                 </select>
               </div>
@@ -403,6 +405,7 @@ function RoleBadge({ role }: { role: string }) {
     'Super Admin': 'bg-purple-50 text-purple-700 border-purple-100',
     'Finance': 'bg-primary/10 text-primary border-primary/20',
     'Project Management': 'bg-orange-50 text-orange-700 border-orange-100',
+    'Sekretaris': 'bg-cyan-50 text-cyan-700 border-cyan-100',
   }[role] || 'bg-gray-50 text-gray-700 border-gray-100';
 
   return (

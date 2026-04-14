@@ -3,7 +3,7 @@
  * Tipe-tipe untuk modul Auth & User Management
  */
 
-export type UserRole = 'Platform Owner' | 'Super Admin' | 'Finance' | 'Project Management';
+export type UserRole = 'Platform Owner' | 'Super Admin' | 'Finance' | 'Project Management' | 'Sekretaris';
 export type UserStatus = 'Aktif' | 'Nonaktif';
 
 export interface CompanyBranding {

@@ -32,6 +32,7 @@ export interface HousingUnit {
   serah_terima_date?: string;
   notes?: string;
   photo_url?: string;
+  sertifikat_file_url?: string;
   created_at: string;
   updated_at: string;
   // relasi

@@ -1,26 +1,28 @@
 import {
-  Building2,
-  Clock,
-  Construction,
-  Database,
-  FileText,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Menu,
-  Receipt,
-  User,
-  Users,
-  Wallet
+    Building2,
+    ClipboardList,
+    Clock,
+    Construction,
+    Database,
+    FileCheck,
+    FileText,
+    LayoutDashboard,
+    LogOut,
+    Megaphone,
+    Menu,
+    Receipt,
+    User,
+    Users,
+    Wallet
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Navigate,
-  Outlet,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
+    Navigate,
+    Outlet,
+    Route,
+    Routes,
+    useLocation,
+    useNavigate,
 } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import logoMini from "../assets/61cebe8f7139be169da0e497fe1e0c50a3adec15.png";
@@ -39,8 +41,12 @@ import { DataMasterProjects } from './pages/DataMasterProjects';
 import { DataMasterQCTemplates } from './pages/DataMasterQCTemplates';
 import { Finance } from './pages/Finance';
 import { ForgotPassword } from './pages/ForgotPassword';
+import { Logbook } from './pages/Logbook';
+import { LogbookDetail } from './pages/LogbookDetail';
 import { Login } from './pages/Login';
 import { Marketing } from './pages/Marketing';
+import { Notulensi } from './pages/Notulensi';
+import { NotulensiDetail } from './pages/NotulensiDetail';
 import { Profile } from './pages/Profile';
 import { ResetPassword } from './pages/ResetPassword';
 import { SaaSManagement } from './pages/SaaSManagement';
@@ -49,7 +55,7 @@ import { TenantDetail } from './pages/TenantDetail';
 import { Transaksi } from './pages/Transaksi';
 import { UserManagement } from './pages/UserManagement';
 
-type MenuId = 'dashboard' | 'users' | 'absensi' | 'finance' | 'construction' | 'quality' | 'marketing' | 'sop' | 'transaksi' | 'saas' | 'datamaster';
+type MenuId = 'dashboard' | 'users' | 'absensi' | 'finance' | 'construction' | 'quality' | 'marketing' | 'sop' | 'transaksi' | 'saas' | 'datamaster' | 'logbook' | 'notulensi';
 
 interface MenuItem {
   id: MenuId;
@@ -291,6 +297,8 @@ export default function App() {
       },
       { id: 'finance', label: 'Finance & Accounting', icon: Wallet, path: '/finance', roles: ['Platform Owner', 'Super Admin', 'Finance'] },
       { id: 'marketing', label: 'Marketing & Penjualan', icon: Megaphone, path: '/marketing', roles: ['Platform Owner', 'Super Admin'] },
+      { id: 'logbook', label: 'Logbook', icon: FileCheck, path: '/logbook', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
+      { id: 'notulensi', label: 'Notulensi', icon: ClipboardList, path: '/notulensi', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
       { id: 'sop', label: 'SOP', icon: FileText, path: '/sop', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
       { id: 'absensi', label: 'Absensi Karyawan', icon: Clock, path: '/absensi', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management'] },
       { id: 'users', label: 'User Management', icon: Users, path: '/users', roles: ['Platform Owner', 'Super Admin'] },
@@ -315,6 +323,8 @@ export default function App() {
     construction: <ConstructionModule />,
     datamaster: <Navigate to="/data-master/projects" replace />,
     marketing: <Marketing />,
+    logbook: <Logbook />,
+    notulensi: <Notulensi />,
     sop: <SOP />,
     transaksi: <Transaksi />,
     saas: <SaaSManagement />,
@@ -386,6 +396,8 @@ export default function App() {
         <Route path="data-master/departments" element={<DataMasterDepartments />} />
         <Route path="data-master/materials" element={<DataMasterMaterials />} />
         <Route path="data-master/payment-schemes" element={<DataMasterPaymentSchemes />} />
+        <Route path="logbook/:id" element={<LogbookDetail />} />
+        <Route path="notulensi/:id" element={<NotulensiDetail />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Route>
     </Routes>

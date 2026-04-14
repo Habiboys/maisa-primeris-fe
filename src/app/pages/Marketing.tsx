@@ -1071,11 +1071,23 @@ export function Marketing() {
                           } else {
                             // Jika unit sudah terkunci oleh lead (Proses), arahkan user ke edit lead itu.
                             if (selectedUnit.reserved_lead_id) {
-                              setActiveTab('leads');
                               void (async () => {
                                 try {
                                   const lead = await marketingService.getLeadById(selectedUnit.reserved_lead_id as string);
+                                  if (lead.consumer_id) {
+                                    navigate('/finance', { state: { openDetailId: lead.consumer_id } });
+                                    return;
+                                  }
+                                  if (lead.status === 'Deal' && !lead.consumer_id) {
+                                    navigate('/finance', { state: { prefilledLeadId: lead.id } });
+                                    return;
+                                  }
+
+                                  setActiveTab('leads');
                                   startEditingLead(lead);
+                                  if (lead.status !== 'Deal') {
+                                    toast.info('Ubah status lead ke Deal dulu, lalu tambahkan piutang dari Finance.');
+                                  }
                                 } catch {
                                   toast.error('Gagal memuat lead yang mengunci unit ini.');
                                 }

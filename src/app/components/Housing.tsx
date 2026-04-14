@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
-  CreditCard,
   Download,
   Edit2,
   FileText,
@@ -14,13 +13,12 @@ import {
   Plus,
   Search,
   Trash2,
-  TrendingUp,
   Wallet,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useConfirmDialog, useHousingUnits, usePaymentHistory, useProjects, useProjectUnits } from "../../hooks";
+import { useConfirmDialog, useHousingUnits, usePaymentHistory, usePaymentSchemes, useProjects, useProjectUnits } from "../../hooks";
 import { housingService } from "../../services/housing.service";
 import { formatRupiah } from "../../lib/utils";
 import type { CreateHousingUnitPayload, HousingUnit, HousingUnitStatus, Project } from "../../types";
@@ -169,6 +167,7 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
   const [housingPerPage, setHousingPerPage] = useState(10);
   const { units, isLoading, pagination: housingPagination, create, update, remove } = useHousingUnits(searchQuery || undefined, { limit: housingPerPage, page: housingPage, project_id: projectFilterId || undefined });
   const { projects } = useProjects();
+  const { paymentSchemes } = usePaymentSchemes();
   const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
 
   // UI state
@@ -1238,31 +1237,24 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
                     </div>
                   )}
 
-                  {/* Metode Pembayaran Tersedia — card border-gray-100 + icon kanan */}
+                  {/* Metode Pembayaran Tersedia dari Data Master */}
                   <div className="space-y-4">
                     <h4 className="font-bold text-gray-900 border-l-4 border-primary pl-3">Metode Pembayaran Tersedia</h4>
                     <div className="grid grid-cols-1 gap-3">
-                      <div className="p-4 border border-gray-100 rounded-xl hover:border-primary/30 transition-all cursor-pointer group">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-bold text-gray-800">KPR (Kredit Pemilikan Rumah)</p>
-                          <CreditCard className="text-primary opacity-50 group-hover:opacity-100" size={20} />
+                      {(paymentSchemes ?? []).length === 0 ? (
+                        <div className="p-4 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+                          <p className="text-sm text-gray-600">Belum ada metode pembayaran. Tambahkan di Data Master → Payment Scheme.</p>
                         </div>
-                        <p className="text-xs text-gray-500">Uang muka fleksibel (min 10%), proses cepat melalui bank partner.</p>
-                      </div>
-                      <div className="p-4 border border-gray-100 rounded-xl hover:border-primary/30 transition-all cursor-pointer group">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-bold text-gray-800">Cash Bertahap</p>
-                          <Clock className="text-primary opacity-50 group-hover:opacity-100" size={20} />
-                        </div>
-                        <p className="text-xs text-gray-500">Cicilan langsung ke developer hingga 12x tanpa bunga (flat).</p>
-                      </div>
-                      <div className="p-4 border border-gray-100 rounded-xl hover:border-primary/30 transition-all cursor-pointer group">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-bold text-gray-800">Cash Keras</p>
-                          <TrendingUp className="text-primary opacity-50 group-hover:opacity-100" size={20} />
-                        </div>
-                        <p className="text-xs text-gray-500">Pembayaran lunas dalam 1 bulan dengan diskon khusus unit ready.</p>
-                      </div>
+                      ) : (
+                        paymentSchemes.map((scheme) => (
+                          <div key={scheme.id} className="p-4 border border-gray-100 rounded-xl">
+                            <p className="font-bold text-gray-800">{scheme.name}</p>
+                            {scheme.description ? (
+                              <p className="text-xs text-gray-500 mt-1">{scheme.description}</p>
+                            ) : null}
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>

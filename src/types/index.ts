@@ -15,6 +15,7 @@ export * from './company.types';
 export * from './finance.types';
 export * from './housing.types';
 export * from './legal.types';
+export * from './logbook.types';
 export * from './marketing.types';
 export * from './project.types';
 export * from './qc.types';

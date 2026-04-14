@@ -1591,6 +1591,72 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 </div>
               </div>
             </div>
+
+            <div className="px-4 pt-4">
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wide">Presensi Saya (Super Admin)</p>
+                    <p className="text-sm text-gray-700 mt-1">
+                      Lokasi: {userAssignedLocation?.name ?? 'Belum ada lokasi penugasan'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Masuk: {fmtTime(todayRecord?.clock_in)} · Pulang: {fmtTime(todayRecord?.clock_out)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleVerifyLocation}
+                      disabled={gpsLoading}
+                      className="px-3 py-2 text-xs font-bold rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {gpsLoading ? 'Verifikasi GPS...' : 'Verifikasi GPS'}
+                    </button>
+
+                    {!hasClockedOut ? (
+                      !isClockedIn ? (
+                        <button
+                          type="button"
+                          onClick={handleClockIn}
+                          disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos || !isLocationVerified}
+                          className="px-3 py-2 text-xs font-bold rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          {photoCompressing ? 'Memproses Foto...' : 'Absen Masuk'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleClockOut}
+                          disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos}
+                          className="px-3 py-2 text-xs font-bold rounded-lg border-2 border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
+                        >
+                          {photoCompressing ? 'Memproses Foto...' : 'Absen Pulang'}
+                        </button>
+                      )
+                    ) : (
+                      <span className="px-3 py-2 text-xs font-bold rounded-lg bg-green-100 text-green-700 inline-flex items-center gap-1">
+                        <CheckCircle2 size={14} />
+                        Absensi Selesai
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {(gpsError || (userGpsPos && isLocationVerified)) && (
+                  <div className="mt-3">
+                    {gpsError ? (
+                      <p className="text-xs text-red-600">{gpsError}</p>
+                    ) : (
+                      <p className="text-xs text-green-600">
+                        GPS terverifikasi {distanceM !== null ? `(jarak ${distanceM}m)` : ''}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
