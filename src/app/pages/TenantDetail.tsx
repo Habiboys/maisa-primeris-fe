@@ -1,23 +1,24 @@
 import {
-  ArrowLeft,
-  Building2,
-  CheckCircle2,
-  Edit2,
-  Palette,
-  Save,
-  Trash2,
-  UserMinus,
-  Users,
-  XCircle,
+    ArrowLeft,
+    Building2,
+    CheckCircle2,
+    Edit2,
+    Palette,
+    Save,
+    Trash2,
+    UserMinus,
+    Users,
+    XCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth, useCompanies, useCompany, useCompanyBranding, useUsers } from '../../hooks';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
-import { getErrorMessage } from '../../lib/utils';
-import type { CompanyPayload, CreateUserPayload, CompanySettingsPayload, UserRole } from '../../types';
+import { getErrorMessage, resolveAssetUrl } from '../../lib/utils';
+import type { CompanyPayload, CompanySettingsPayload, CreateUserPayload, MediaAsset, UserRole } from '../../types';
+import { MediaPickerModal } from '../components/MediaPickerModal';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
-import { toast } from 'sonner';
 
 
 function useMathCaptcha() {
@@ -83,6 +84,9 @@ export function TenantDetail() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [mediaTarget, setMediaTarget] = useState<'logo' | 'favicon' | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
   const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '', role: 'Super Admin' as UserRole });
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<{ id: string; name: string; email: string; role: UserRole } | null>(null);
@@ -208,6 +212,36 @@ export function TenantDetail() {
       // toast di hook
     } finally {
       setIsSavingBranding(false);
+    }
+  };
+
+  const openMediaPicker = (target: 'logo' | 'favicon') => {
+    setMediaTarget(target);
+    setIsMediaPickerOpen(true);
+  };
+
+  const mediaAssetToFile = async (asset: MediaAsset): Promise<File> => {
+    const assetUrl = resolveAssetUrl(asset.file_path) || asset.file_path;
+    const response = await fetch(assetUrl);
+    if (!response.ok) throw new Error('Gagal mengambil file dari gallery');
+    const blob = await response.blob();
+    const fileName = asset.original_name || asset.stored_name || 'gallery-image.jpg';
+    return new File([blob], fileName, { type: blob.type || asset.mime_type || 'image/jpeg' });
+  };
+
+  const handleMediaSelect = async (asset: MediaAsset) => {
+    try {
+      const file = await mediaAssetToFile(asset);
+      if (mediaTarget === 'logo') {
+        setLogoFile(file);
+      } else if (mediaTarget === 'favicon') {
+        setFaviconFile(file);
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setIsMediaPickerOpen(false);
+      setMediaTarget(null);
     }
   };
 
@@ -341,13 +375,13 @@ export function TenantDetail() {
   const logoDisplayUrl =
     logoPreview ??
     (settings?.logo_url
-      ? `${import.meta.env.VITE_ASSET_URL ?? ''}${settings.logo_url}`
+      ? resolveAssetUrl(settings.logo_url)
       : null);
 
   const faviconDisplayUrl =
     faviconPreview ??
     (settings?.favicon_url
-      ? `${import.meta.env.VITE_ASSET_URL ?? ''}${settings.favicon_url}`
+      ? resolveAssetUrl(settings.favicon_url)
       : null);
 
   if (!isNew && !company && !loadingCompany) {
@@ -608,7 +642,7 @@ export function TenantDetail() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Logo</label>
               {logoDisplayUrl && (
-                <div className="mb-2 flex items-center gap-3">
+                <div className="mb-2 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setImagePreview({ src: logoDisplayUrl, title: 'Logo Tenant' })}>
                   <ImageWithFallback
                     src={logoDisplayUrl}
                     alt="Logo saat ini"
@@ -620,10 +654,10 @@ export function TenantDetail() {
                 </div>
               )}
               <input
-                type="file"
-                accept="image/*"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
+                type="button"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-left"
+                value="Pilih logo dari gallery"
+                onClick={() => openMediaPicker('logo')}
               />
               {!logoDisplayUrl && !logoFile && (
                 <p className="text-sm text-gray-400 mt-1">Belum ada logo. Upload file untuk menambah logo.</p>
@@ -632,7 +666,7 @@ export function TenantDetail() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Favicon (Tab Browser)</label>
               {faviconDisplayUrl && (
-                <div className="mb-2 flex items-center gap-3">
+                <div className="mb-2 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setImagePreview({ src: faviconDisplayUrl, title: 'Favicon Tenant' })}>
                   <ImageWithFallback
                     src={faviconDisplayUrl}
                     alt="Favicon saat ini"
@@ -644,10 +678,10 @@ export function TenantDetail() {
                 </div>
               )}
               <input
-                type="file"
-                accept="image/*"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                onChange={(e) => setFaviconFile(e.target.files?.[0] ?? null)}
+                type="button"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-left"
+                value="Pilih favicon dari gallery"
+                onClick={() => openMediaPicker('favicon')}
               />
               {!faviconDisplayUrl && !faviconFile && (
                 <p className="text-sm text-gray-400 mt-1">Belum ada favicon. Upload untuk menampilkan icon di tab browser.</p>
@@ -693,6 +727,16 @@ export function TenantDetail() {
           </button>
         </section>
       )}
+
+      <MediaPickerModal
+        open={isMediaPickerOpen}
+        onClose={() => {
+          setIsMediaPickerOpen(false);
+          setMediaTarget(null);
+        }}
+        onSelect={handleMediaSelect}
+        category={mediaTarget === 'favicon' ? 'branding-favicon' : 'branding-logo'}
+      />
 
       {/* Danger Zone */}
       {!isNew && company?.id && (
@@ -838,6 +882,14 @@ export function TenantDetail() {
           </div>
         </div>
       )}
+
+      <ImagePreviewModal
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src ?? null}
+        title={imagePreview?.title ?? 'Preview Gambar'}
+        downloadFileName={`tenant-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
+        onClose={() => setImagePreview(null)}
+      />
     </div>
   );
 }

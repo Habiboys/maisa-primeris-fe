@@ -1,27 +1,29 @@
 import {
-  AlertCircle,
-  Building2,
-  Calculator,
-  CheckCircle,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  Download,
-  Edit2,
-  FileText,
-  Home,
-  Plus,
-  Search,
-  Trash2,
-  Wallet,
-  X,
+    AlertCircle,
+    Building2,
+    Calculator,
+    CheckCircle,
+    ChevronDown,
+    ChevronRight,
+    Clock,
+    Download,
+    Edit2,
+    FileText,
+    Home,
+    Plus,
+    Search,
+    Trash2,
+    Wallet,
+    X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useConfirmDialog, useHousingUnits, usePaymentHistory, usePaymentSchemes, useProjects, useProjectUnits } from "../../hooks";
+import { formatRupiah, getErrorMessage, resolveAssetUrl } from "../../lib/utils";
 import { housingService } from "../../services/housing.service";
-import { formatRupiah } from "../../lib/utils";
-import type { CreateHousingUnitPayload, HousingUnit, HousingUnitStatus, Project } from "../../types";
+import type { CreateHousingUnitPayload, HousingUnit, HousingUnitStatus, MediaAsset, Project } from "../../types";
+import { ImagePreviewModal } from "./ImagePreviewModal";
+import { MediaPickerModal } from "./MediaPickerModal";
 
 function getProjectName(projects: Project[] | undefined, projectId: string | undefined): string {
   if (!projectId) return "—";
@@ -216,6 +218,28 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
   };
   const [form, setForm] = useState<typeof initialForm>(initialForm);
   const [formPhoto, setFormPhoto] = useState<File | null>(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
+
+  const mediaAssetToFile = async (asset: MediaAsset): Promise<File> => {
+    const assetUrl = resolveAssetUrl(asset.file_path) || asset.file_path;
+    const response = await fetch(assetUrl);
+    if (!response.ok) throw new Error('Gagal mengambil file dari gallery');
+    const blob = await response.blob();
+    const fileName = asset.original_name || asset.stored_name || 'gallery-image.jpg';
+    return new File([blob], fileName, { type: blob.type || asset.mime_type || 'image/jpeg' });
+  };
+
+  const handleMediaSelect = async (asset: MediaAsset) => {
+    try {
+      const file = await mediaAssetToFile(asset);
+      setFormPhoto(file);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setIsMediaPickerOpen(false);
+    }
+  };
 
   // KPR simulation state
   const [dpPercent, setDpPercent] = useState(20);
@@ -915,15 +939,19 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
                 {/* Foto Unit */}
                 <div className="space-y-2">
                   <h4 className="font-bold text-gray-900 border-l-4 border-primary pl-3">Foto Unit</h4>
-                  <input
-                    type="file"
-                    accept=".png,.jpg,.jpeg,image/png,image/jpeg"
-                    onChange={(e) => setFormPhoto(e.target.files?.[0] ?? null)}
-                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary/10 file:text-primary file:font-medium"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsMediaPickerOpen(true)}
+                    className="w-full text-left text-sm text-gray-700 px-4 py-2.5 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    Pilih Foto dari Gallery
+                  </button>
                   <p className="text-xs text-gray-500">PNG, JPG, atau JPEG (max. 5MB)</p>
                   {editingUnit?.photo_url && !formPhoto && (
                     <p className="text-xs text-green-600">Foto saat ini: {editingUnit.photo_url}</p>
+                  )}
+                  {formPhoto && (
+                    <p className="text-xs text-primary font-medium">File dipilih: {formPhoto.name}</p>
                   )}
                 </div>
               </div>
@@ -1063,9 +1091,9 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
                 <div className="space-y-6 animate-in fade-in duration-300">
                   {/* Foto Unit */}
                   {selectedUnit.photo_url ? (
-                    <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                    <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm cursor-pointer hover:shadow-md transition-all" onClick={() => setImagePreview({ src: selectedUnit.photo_url || '', title: `Unit ${selectedUnit.unit_code}` })}>
                       <img
-                        src={`${import.meta.env.VITE_ASSET_URL ?? ''}${selectedUnit.photo_url}`}
+                        src={resolveAssetUrl(selectedUnit.photo_url) || ''}
                         alt={`Unit ${selectedUnit.unit_code}`}
                         className="w-full h-64 object-cover"
                       />
@@ -1256,6 +1284,13 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
                         ))
                       )}
                     </div>
+
+                    <MediaPickerModal
+                      open={isMediaPickerOpen}
+                      onClose={() => setIsMediaPickerOpen(false)}
+                      onSelect={handleMediaSelect}
+                      category="housing-unit"
+                    />
                   </div>
                 </div>
               )}
@@ -1394,6 +1429,14 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
           </div>
         </div>
       )}
+
+      <ImagePreviewModal
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src ?? null}
+        title={imagePreview?.title ?? 'Preview Gambar'}
+        downloadFileName={`unit-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
+        onClose={() => setImagePreview(null)}
+      />
     </div>
   );
 }

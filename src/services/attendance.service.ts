@@ -17,16 +17,6 @@ import type {
     WorkLocation,
 } from '../types';
 
-const buildClockPayload = (payload: ClockInPayload): FormData | ClockInPayload => {
-  if (!payload.photo) return payload;
-
-  const form = new FormData();
-  form.append('lat', String(payload.lat));
-  form.append('lng', String(payload.lng));
-  form.append('photo', payload.photo);
-  return form;
-};
-
 export const attendanceService = {
   // ── Attendance Settings ─────────────────────────────────────
   async getAttendanceSettings(): Promise<AttendanceSetting> {
@@ -96,18 +86,12 @@ export const attendanceService = {
   },
 
   async clockIn(payload: ClockInPayload): Promise<Attendance> {
-    const body = buildClockPayload(payload);
-    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-in', body, body instanceof FormData
-      ? { headers: { 'Content-Type': 'multipart/form-data' } }
-      : undefined);
+    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-in', payload);
     return res.data.data;
   },
 
   async clockOut(payload: ClockInPayload): Promise<Attendance> {
-    const body = buildClockPayload(payload);
-    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-out', body, body instanceof FormData
-      ? { headers: { 'Content-Type': 'multipart/form-data' } }
-      : undefined);
+    const res = await api.post<ApiResponse<Attendance>>('/attendances/clock-out', payload);
     return res.data.data;
   },
 

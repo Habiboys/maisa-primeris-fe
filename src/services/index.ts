@@ -15,6 +15,7 @@ export * from './housing.service';
 export * from './legal.service';
 export * from './logbook.service';
 export * from './marketing.service';
+export * from './media.service';
 export * from './meetingNote.service';
 export * from './project.service';
 export * from './qc.service';

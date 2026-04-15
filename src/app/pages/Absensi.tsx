@@ -1,7 +1,6 @@
 import {
     AlertCircle,
     CalendarDays,
-    Camera,
     CheckCircle2,
     Clock,
     Clock3,
@@ -11,7 +10,6 @@ import {
     Pencil,
     Plus,
     Search,
-    SwitchCamera,
     Target,
     Trash2,
     UserCheck,
@@ -30,8 +28,6 @@ import {
     useMyAttendance,
     useWorkLocations,
 } from '../../hooks';
-import { API_BASE_URL } from '../../lib/config';
-import { compressImageToFile } from '../../lib/utils';
 import { userService } from '../../services';
 import type { Attendance, LeaveRequest, User, UserLocationAssignment, WorkLocation } from '../../types';
 
@@ -179,14 +175,6 @@ function fmtTimeInput(val?: string): string {
   return val.slice(0, 5);
 }
 
-function resolveAttendancePhotoUrl(photoPath?: string): string | null {
-  if (!photoPath) return null;
-  if (/^https?:\/\//i.test(photoPath)) return photoPath;
-
-  const origin = API_BASE_URL.replace(/\/api\/v\d+\/?$/i, '');
-  return `${origin}${photoPath.startsWith('/') ? '' : '/'}${photoPath}`;
-}
-
 /* ── Main Component ──────────────────────────────────────────────── */
 
 export function Absensi({ userRole, userName }: AbsensiProps) {
@@ -199,22 +187,6 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [distanceM, setDistanceM] = useState<number | null>(null);
-  const [clockInPhoto, setClockInPhoto] = useState<File | null>(null);
-  const [clockOutPhoto, setClockOutPhoto] = useState<File | null>(null);
-  const [clockInPhotoPreview, setClockInPhotoPreview] = useState<string | null>(null);
-  const [clockOutPhotoPreview, setClockOutPhotoPreview] = useState<string | null>(null);
-  const [photoCompressing, setPhotoCompressing] = useState(false);
-  const [pendingAttendanceAction, setPendingAttendanceAction] = useState<'in' | 'out' | null>(null);
-  const [showCameraModal, setShowCameraModal] = useState(false);
-  const [cameraTarget, setCameraTarget] = useState<'in' | 'out' | null>(null);
-  const [cameraStarting, setCameraStarting] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
-  const cameraCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
-  const [videoInputDevices, setVideoInputDevices] = useState<MediaDeviceInfo[]>([]);
-  /** null = kamera belakang (ideal) pada pembukaan pertama */
-  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const hasAutoVerified = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [monitorPage, setMonitorPage] = useState(1);
@@ -385,166 +357,7 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
 
   const handleVerifyLocation = () => triggerGps();
 
-  const stopCameraStream = () => {
-    if (cameraStreamRef.current) {
-      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
-      cameraStreamRef.current = null;
-    }
-    if (cameraVideoRef.current) {
-      cameraVideoRef.current.srcObject = null;
-    }
-  };
-
-  const closeCameraModal = () => {
-    stopCameraStream();
-    setShowCameraModal(false);
-    setCameraTarget(null);
-    setCameraError(null);
-    setPendingAttendanceAction(null);
-    setVideoInputDevices([]);
-  };
-
-  const startCameraStream = async (deviceId: string | null) => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('Browser tidak mendukung kamera');
-      return;
-    }
-    stopCameraStream();
-    setCameraStarting(true);
-    setCameraError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: deviceId
-          ? { deviceId: { exact: deviceId } }
-          : { facingMode: { ideal: 'environment' } },
-        audio: false,
-      });
-      cameraStreamRef.current = stream;
-      if (cameraVideoRef.current) {
-        cameraVideoRef.current.srcObject = stream;
-        await cameraVideoRef.current.play();
-      }
-      const listed = await navigator.mediaDevices.enumerateDevices();
-      const videos = listed.filter((d) => d.kind === 'videoinput');
-      setVideoInputDevices(videos);
-      const active = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
-      if (active) setSelectedCameraId(active);
-    } catch {
-      setCameraError('Tidak bisa membuka kamera. Pastikan izin kamera sudah diberikan.');
-      toast.error('Gagal membuka kamera');
-    } finally {
-      setCameraStarting(false);
-    }
-  };
-
-  const cycleNextCamera = () => {
-    if (videoInputDevices.length < 2) return;
-    const idx = Math.max(
-      0,
-      videoInputDevices.findIndex((d) => d.deviceId === selectedCameraId),
-    );
-    const next = videoInputDevices[(idx + 1) % videoInputDevices.length];
-    setSelectedCameraId(next.deviceId);
-    void startCameraStream(next.deviceId);
-  };
-
-  const openCameraCapture = async (kind: 'in' | 'out') => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error('Browser tidak mendukung kamera');
-      return;
-    }
-    setCameraTarget(kind);
-    setCameraError(null);
-    setShowCameraModal(true);
-    await startCameraStream(selectedCameraId);
-  };
-
-  const clearClockPhoto = (kind: 'in' | 'out') => {
-    if (kind === 'in') {
-      if (clockInPhotoPreview) URL.revokeObjectURL(clockInPhotoPreview);
-      setClockInPhoto(null);
-      setClockInPhotoPreview(null);
-      return;
-    }
-
-    if (clockOutPhotoPreview) URL.revokeObjectURL(clockOutPhotoPreview);
-    setClockOutPhoto(null);
-    setClockOutPhotoPreview(null);
-  };
-
-  const handleCaptureFromCamera = async () => {
-    if (!cameraTarget) {
-      toast.error('Target foto belum dipilih');
-      return;
-    }
-
-    const video = cameraVideoRef.current;
-    const canvas = cameraCanvasRef.current;
-    if (!video || !canvas || video.videoWidth === 0 || video.videoHeight === 0) {
-      toast.error('Kamera belum siap');
-      return;
-    }
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      toast.error('Gagal memproses gambar kamera');
-      return;
-    }
-
-    try {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, 'image/jpeg', 0.9);
-      });
-
-      if (!blob) {
-        toast.error('Gagal mengambil foto dari kamera');
-        return;
-      }
-
-      setPhotoCompressing(true);
-      const rawFile = new File([blob], `attendance-${cameraTarget}-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      const compressed = await compressImageToFile(rawFile, 1200 * 1024);
-      const previewUrl = URL.createObjectURL(compressed);
-      const target = cameraTarget;
-      const shouldSubmit = pendingAttendanceAction === target;
-
-      if (target === 'in') {
-        if (clockInPhotoPreview) URL.revokeObjectURL(clockInPhotoPreview);
-        setClockInPhoto(compressed);
-        setClockInPhotoPreview(previewUrl);
-      } else {
-        if (clockOutPhotoPreview) URL.revokeObjectURL(clockOutPhotoPreview);
-        setClockOutPhoto(compressed);
-        setClockOutPhotoPreview(previewUrl);
-      }
-
-      closeCameraModal();
-
-      if (shouldSubmit) {
-        if (target === 'in') {
-          await submitClockIn(compressed);
-        } else {
-          await submitClockOut(compressed);
-        }
-      }
-    } catch {
-      toast.error('Gagal memproses foto. Coba lagi.');
-    } finally {
-      setPhotoCompressing(false);
-    }
-  };
-
-  useEffect(() => () => {
-    stopCameraStream();
-    if (clockInPhotoPreview) URL.revokeObjectURL(clockInPhotoPreview);
-    if (clockOutPhotoPreview) URL.revokeObjectURL(clockOutPhotoPreview);
-  }, [clockInPhotoPreview, clockOutPhotoPreview]);
-
-  const submitClockIn = async (photo?: File) => {
+  const submitClockIn = async () => {
     if (activeApprovedLeave) {
       toast.info('Anda sedang dalam periode izin/cuti yang disetujui. Tidak perlu absen masuk.');
       return;
@@ -557,21 +370,15 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
       toast.error('Anda berada di luar area absensi yang ditentukan');
       return;
     }
-    const photoFile = photo ?? clockInPhoto;
-    if (!photoFile) {
-      toast.error('Ambil foto absen masuk terlebih dahulu');
-      return;
-    }
     try {
-      await clockIn({ lat: userGpsPos[0], lng: userGpsPos[1], photo: photoFile });
+      await clockIn({ lat: userGpsPos[0], lng: userGpsPos[1] });
       await refetchMyAttendances();
-      clearClockPhoto('in');
     } catch {
       // hook already shows toast
     }
   };
 
-  const submitClockOut = async (photo?: File) => {
+  const submitClockOut = async () => {
     if (activeApprovedLeave) {
       toast.info('Anda sedang dalam periode izin/cuti yang disetujui. Tidak perlu absen pulang.');
       return;
@@ -580,37 +387,19 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
       toast.error('Verifikasi GPS terlebih dahulu');
       return;
     }
-    const photoFile = photo ?? clockOutPhoto;
-    if (!photoFile) {
-      toast.error('Ambil foto absen pulang terlebih dahulu');
-      return;
-    }
     try {
-      await clockOut({ lat: userGpsPos[0], lng: userGpsPos[1], photo: photoFile });
+      await clockOut({ lat: userGpsPos[0], lng: userGpsPos[1] });
       await refetchMyAttendances();
-      clearClockPhoto('out');
     } catch {
       // hook already shows toast
     }
   };
 
   const handleClockIn = async () => {
-    if (!clockInPhoto) {
-      setPendingAttendanceAction('in');
-      await openCameraCapture('in');
-      return;
-    }
-
     await submitClockIn();
   };
 
   const handleClockOut = async () => {
-    if (!clockOutPhoto) {
-      setPendingAttendanceAction('out');
-      await openCameraCapture('out');
-      return;
-    }
-
     await submitClockOut();
   };
 
@@ -987,50 +776,24 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 </div>
               ) : !isClockedIn ? (
                 <div className="w-full space-y-3">
-                  <label className="block text-left text-xs font-bold text-gray-600 uppercase tracking-wide">Foto Absen Masuk</label>
-                  {clockInPhotoPreview && (
-                    <div className="relative rounded-2xl overflow-hidden border border-gray-200">
-                      <img src={clockInPhotoPreview} alt="Preview foto absen masuk" className="w-full h-36 object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => clearClockPhoto('in')}
-                        className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full hover:bg-black/70"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  )}
                   <button
                     onClick={handleClockIn}
-                    disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos || !isLocationVerified}
+                    disabled={!!activeApprovedLeave || gpsLoading || !userGpsPos || !isLocationVerified}
                     className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                   >
-                    {photoCompressing ? <Camera size={22} className="animate-pulse" /> : <CheckCircle2 size={24} className="group-hover:scale-110 transition-transform" />}
-                    {photoCompressing ? 'Memproses Foto...' : 'Absen Masuk'}
+                    <CheckCircle2 size={24} className="group-hover:scale-110 transition-transform" />
+                    Absen Masuk
                   </button>
                 </div>
               ) : (
                 <div className="w-full space-y-3">
-                  <label className="block text-left text-xs font-bold text-gray-600 uppercase tracking-wide">Foto Absen Pulang</label>
-                  {clockOutPhotoPreview && (
-                    <div className="relative rounded-2xl overflow-hidden border border-gray-200">
-                      <img src={clockOutPhotoPreview} alt="Preview foto absen pulang" className="w-full h-36 object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => clearClockPhoto('out')}
-                        className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full hover:bg-black/70"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  )}
                   <button
                     onClick={handleClockOut}
-                    disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos}
+                    disabled={!!activeApprovedLeave || gpsLoading || !userGpsPos}
                     className="w-full py-4 border-2 border-primary text-primary rounded-2xl font-bold text-lg hover:bg-primary/5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {photoCompressing ? <Camera size={22} className="animate-pulse" /> : <LogOut size={24} />}
-                    {photoCompressing ? 'Memproses Foto...' : 'Absen Pulang'}
+                    <LogOut size={24} />
+                    Absen Pulang
                   </button>
                 </div>
               )}
@@ -1385,106 +1148,6 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
           </div>
         )}
 
-        {showCameraModal && (
-          <div className="fixed inset-0 z-[110] flex flex-col sm:items-center sm:justify-center sm:p-4 bg-black/70 backdrop-blur-sm">
-            <div className="bg-white w-full h-full sm:h-auto sm:max-h-[95vh] sm:max-w-md sm:rounded-3xl shadow-2xl flex flex-col sm:p-5 overflow-hidden">
-              <div className="flex items-center justify-between px-4 pt-4 pb-2 sm:px-0 sm:pt-0 shrink-0">
-                <h3 className="text-base sm:text-lg font-bold pr-2">
-                  Ambil Foto {cameraTarget === 'in' ? 'Absen Masuk' : 'Absen Pulang'}
-                </h3>
-                <button
-                  type="button"
-                  onClick={closeCameraModal}
-                  className="p-2 hover:bg-gray-100 rounded-full shrink-0 touch-manipulation"
-                  aria-label="Tutup"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="px-4 sm:px-0 space-y-3 shrink-0">
-                {videoInputDevices.length > 0 && (
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <label className="sr-only" htmlFor="absensi-camera-select">
-                      Pilih kamera
-                    </label>
-                    <select
-                      id="absensi-camera-select"
-                      value={selectedCameraId ?? ''}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setSelectedCameraId(id || null);
-                        void startCameraStream(id || null);
-                      }}
-                      disabled={cameraStarting}
-                      className="flex-1 min-w-0 text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 font-medium touch-manipulation"
-                    >
-                      {videoInputDevices.map((d, i) => (
-                        <option key={d.deviceId || `cam-${i}`} value={d.deviceId}>
-                          {d.label || `Kamera ${i + 1}`}
-                        </option>
-                      ))}
-                    </select>
-                    {videoInputDevices.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={cycleNextCamera}
-                        disabled={cameraStarting}
-                        className="inline-flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50 touch-manipulation whitespace-nowrap"
-                        title="Ganti kamera berikutnya"
-                      >
-                        <SwitchCamera size={18} />
-                        <span className="sm:inline">Ganti</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-0 pb-4">
-                <div className="rounded-2xl overflow-hidden border border-gray-200 bg-black relative flex-1 min-h-[200px] max-h-[min(55vh,420px)] sm:max-h-none sm:h-72 w-full">
-                  <video
-                    ref={cameraVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full min-h-[200px] sm:min-h-0 sm:h-72 object-cover"
-                  />
-                  {cameraStarting && (
-                    <div className="absolute inset-0 flex items-center justify-center text-white text-sm font-bold bg-black/50">
-                      Membuka kamera...
-                    </div>
-                  )}
-                </div>
-
-                {cameraError && (
-                  <div className="mt-3 p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium">
-                    {cameraError}
-                  </div>
-                )}
-
-                <div className="flex gap-3 mt-4 pb-[env(safe-area-inset-bottom,0px)]">
-                  <button
-                    type="button"
-                    onClick={closeCameraModal}
-                    className="flex-1 min-h-[48px] py-3 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 touch-manipulation"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCaptureFromCamera}
-                    disabled={cameraStarting || !!cameraError || photoCompressing}
-                    className="flex-1 min-h-[48px] py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
-                  >
-                    {photoCompressing ? 'Memproses...' : 'Ambil Foto'}
-                  </button>
-                </div>
-              </div>
-              <canvas ref={cameraCanvasRef} className="hidden" />
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -1619,19 +1282,19 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                         <button
                           type="button"
                           onClick={handleClockIn}
-                          disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos || !isLocationVerified}
+                          disabled={!!activeApprovedLeave || gpsLoading || !userGpsPos || !isLocationVerified}
                           className="px-3 py-2 text-xs font-bold rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
                         >
-                          {photoCompressing ? 'Memproses Foto...' : 'Absen Masuk'}
+                          Absen Masuk
                         </button>
                       ) : (
                         <button
                           type="button"
                           onClick={handleClockOut}
-                          disabled={!!activeApprovedLeave || gpsLoading || photoCompressing || !userGpsPos}
+                          disabled={!!activeApprovedLeave || gpsLoading || !userGpsPos}
                           className="px-3 py-2 text-xs font-bold rounded-lg border-2 border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
                         >
-                          {photoCompressing ? 'Memproses Foto...' : 'Absen Pulang'}
+                          Absen Pulang
                         </button>
                       )
                     ) : (
@@ -2402,52 +2065,6 @@ export function Absensi({ userRole, userName }: AbsensiProps) {
                 <div className="p-3 bg-gray-50 rounded-xl col-span-2">
                   <p className="text-xs text-gray-500">LOKASI</p>
                   <p className="font-bold">{selectedAttendance.location?.name ?? '-'}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-xl">
-                  <p className="text-xs text-gray-500 mb-2">FOTO CHECK-IN</p>
-                  {resolveAttendancePhotoUrl(selectedAttendance.clock_in_photo) ? (
-                    <a
-                      href={resolveAttendancePhotoUrl(selectedAttendance.clock_in_photo) as string}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block"
-                    >
-                      <img
-                        src={resolveAttendancePhotoUrl(selectedAttendance.clock_in_photo) as string}
-                        alt="Foto check-in"
-                        className="w-full h-36 object-cover rounded-lg border border-gray-200"
-                      />
-                    </a>
-                  ) : (
-                    <div className="w-full h-36 rounded-lg border border-dashed border-gray-300 bg-white text-gray-400 text-xs flex items-center justify-center">
-                      Tidak ada foto check-in
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl">
-                  <p className="text-xs text-gray-500 mb-2">FOTO CHECK-OUT</p>
-                  {resolveAttendancePhotoUrl(selectedAttendance.clock_out_photo) ? (
-                    <a
-                      href={resolveAttendancePhotoUrl(selectedAttendance.clock_out_photo) as string}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block"
-                    >
-                      <img
-                        src={resolveAttendancePhotoUrl(selectedAttendance.clock_out_photo) as string}
-                        alt="Foto check-out"
-                        className="w-full h-36 object-cover rounded-lg border border-gray-200"
-                      />
-                    </a>
-                  ) : (
-                    <div className="w-full h-36 rounded-lg border border-dashed border-gray-300 bg-white text-gray-400 text-xs flex items-center justify-center">
-                      Tidak ada foto check-out
-                    </div>
-                  )}
                 </div>
               </div>
 

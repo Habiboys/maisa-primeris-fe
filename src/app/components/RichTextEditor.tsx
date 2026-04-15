@@ -2,6 +2,10 @@ import BlotFormatter from 'quill-blot-formatter';
 import { useMemo, useRef } from 'react';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import { toast } from 'sonner';
+import { getErrorMessage, resolveAssetUrl } from '../../lib/utils';
+import { mediaService } from '../../services';
+import '../../styles/rich-text-editor.css';
 
 const quillRegistry = Quill as unknown as {
   imports?: Record<string, unknown>;
@@ -41,28 +45,31 @@ export function RichTextEditor({
           ['clean'],
         ],
         handlers: {
-          image: () => {
+          image: async () => {
             const input = document.createElement('input');
             input.setAttribute('type', 'file');
             input.setAttribute('accept', 'image/*');
             input.click();
 
-            input.onchange = () => {
+            input.onchange = async () => {
               const file = input.files?.[0];
               if (!file) return;
 
-              const reader = new FileReader();
-              reader.onload = () => {
+              try {
+                const uploaded = await mediaService.upload({ file, category: 'editor' });
+                const uploadedUrl = resolveAssetUrl(uploaded.file_path);
+                if (!uploadedUrl) return;
+
                 const editor = quillRef.current?.getEditor();
                 if (!editor) return;
 
                 const range = editor.getSelection(true);
                 const index = range?.index ?? editor.getLength();
-                const imageUrl = String(reader.result || '');
-                editor.insertEmbed(index, 'image', imageUrl, 'user');
+                editor.insertEmbed(index, 'image', uploadedUrl, 'user');
                 editor.setSelection(index + 1, 0, 'user');
-              };
-              reader.readAsDataURL(file);
+              } catch (err) {
+                toast.error(getErrorMessage(err));
+              }
             };
           },
         },
@@ -71,7 +78,7 @@ export function RichTextEditor({
   }, [readOnly]);
 
   return (
-    <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
+    <div className="rich-text-editor rounded-lg border border-gray-200 bg-white">
       <ReactQuill
         ref={quillRef}
         theme="snow"

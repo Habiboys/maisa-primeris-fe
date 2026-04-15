@@ -39,8 +39,6 @@ export interface Attendance {
   clock_in_lng?: number;
   clock_out_lat?: number;
   clock_out_lng?: number;
-  clock_in_photo?: string;
-  clock_out_photo?: string;
   status: AttendanceStatus;
   notes?: string;
   created_at?: string;
@@ -71,7 +69,6 @@ export interface LeaveRequest {
 export interface ClockInPayload {
   lat: number;
   lng: number;
-  photo?: File;
 }
 
 export interface CreateLeaveRequestPayload {

@@ -1,29 +1,29 @@
 import {
-  AlertTriangle as AlertTriangleIcon,
-  Box,
-  Calendar,
-  CheckCircle2 as CheckCircle2Icon,
-  ChevronRight,
-  ClipboardList,
-  Clock as ClockIcon,
-  Construction as ConstructionIcon,
-  Edit2,
-  Filter,
-  History as HistoryIcon,
-  Home,
-  Info,
-  LayoutGrid,
-  Loader2,
-  Map as MapIcon,
-  MapPin,
-  Pencil,
-  Plus,
-  Printer,
-  Search,
-  Settings,
-  TrendingUp,
-  Users,
-  X
+    AlertTriangle as AlertTriangleIcon,
+    Box,
+    Calendar,
+    CheckCircle2 as CheckCircle2Icon,
+    ChevronRight,
+    ClipboardList,
+    Clock as ClockIcon,
+    Construction as ConstructionIcon,
+    Edit2,
+    Filter,
+    History as HistoryIcon,
+    Home,
+    Info,
+    LayoutGrid,
+    Loader2,
+    Map as MapIcon,
+    MapPin,
+    Pencil,
+    Plus,
+    Printer,
+    Search,
+    Settings,
+    TrendingUp,
+    Users,
+    X
 } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -32,9 +32,11 @@ import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useMaterials, useProjects, useQCTemplates } from '../../hooks';
 import { formatDateId } from '../../lib/date';
 import { type ConstructionStatus, type InventoryLog, type Project, type ProjectUnit, type WorkLog } from '../../lib/mockConstruction';
-import { compressImageToFile } from '../../lib/utils';
+import { compressImageToFile, getErrorMessage, resolveAssetUrl } from '../../lib/utils';
 import { projectService, qcService } from '../../services';
-import type { ConstructionStatus as ApiCS, Project as ApiProject, ProjectUnit as ApiProjectUnit } from '../../types';
+import type { ConstructionStatus as ApiCS, Project as ApiProject, ProjectUnit as ApiProjectUnit, MediaAsset } from '../../types';
+import { ImagePreviewModal } from '../components/ImagePreviewModal';
+import { MediaPickerModal } from '../components/MediaPickerModal';
 import { QualityControl } from '../components/QualityControl';
 import { Modal } from '../components/ui/Modal';
 import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
@@ -71,6 +73,19 @@ const mapApiProjectToUi = (project: ApiProject): Project => {
     timeSchedule: [],
     layout_svg: project.layout_svg,
   };
+};
+
+const mediaAssetToFile = async (asset: MediaAsset): Promise<File> => {
+  const assetUrl = resolveAssetUrl(asset.file_path) || asset.file_path;
+  const response = await fetch(assetUrl);
+  if (!response.ok) throw new Error('Gagal mengambil file dari gallery');
+
+  const blob = await response.blob();
+  const fileName = asset.original_name || asset.stored_name || 'gallery-image.jpg';
+
+  return new File([blob], fileName, {
+    type: blob.type || asset.mime_type || 'image/jpeg',
+  });
 };
 
 /*
@@ -651,6 +666,8 @@ export function Construction() {
     photos: [] as string[]
   });
   const [reportFiles, setReportFiles] = useState<File[]>([]);
+  const [isReportMediaPickerOpen, setIsReportMediaPickerOpen] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
 
   // Load SVG when switching to map tab or when project/units change
   useEffect(() => {
@@ -1268,14 +1285,18 @@ export function Construction() {
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    const fileArray = Array.from(files);
-    const compressed = await Promise.all(fileArray.map(f => compressImageToFile(f)));
-    const previewUrls = compressed.map(f => URL.createObjectURL(f));
-    setReportFiles(prev => [...prev, ...compressed]);
-    setReportForm(prev => ({ ...prev, photos: [...prev.photos, ...previewUrls] }));
+  const handleReportMediaSelect = async (asset: MediaAsset) => {
+    try {
+      const file = await mediaAssetToFile(asset);
+      const compressed = await compressImageToFile(file);
+      const previewUrl = URL.createObjectURL(compressed);
+      setReportFiles(prev => [...prev, compressed]);
+      setReportForm(prev => ({ ...prev, photos: [...prev.photos, previewUrl] }));
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setIsReportMediaPickerOpen(false);
+    }
   };
 
   const handleAction = (_label: string) => { /* placeholder for quick stat clicks */ };
@@ -2985,26 +3006,32 @@ export function Construction() {
               <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-primary/50 transition-all">
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Plus size={24} className="text-gray-400 mb-2" />
-                  <p className="text-xs text-gray-500 font-bold">Klik untuk upload foto</p>
+                  <p className="text-xs text-gray-500 font-bold">Pilih foto dari gallery</p>
                   <p className="text-[10px] text-gray-400">PNG, JPG (bisa pilih banyak foto sekaligus)</p>
                   {reportForm.photos.length > 0 && (
                     <p className="text-[10px] text-primary font-bold mt-1">{reportForm.photos.length} foto terpilih</p>
                   )}
                 </div>
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  multiple 
-                  accept="image/*"
-                  onChange={handleFileChange}
-                />
               </label>
+              <button
+                type="button"
+                onClick={() => setIsReportMediaPickerOpen(true)}
+                className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+              >
+                Tambah dari Gallery
+              </button>
               
               {reportForm.photos.length > 0 && (
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-64 overflow-y-auto p-1">
                   {reportForm.photos.map((url, i) => (
-                    <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-100">
-                      <img src={url} className="w-full h-full object-cover" alt="preview" />
+                    <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:shadow-md transition-all">
+                      <button
+                        type="button"
+                        onClick={() => setImagePreview({ src: url, title: `Work Log ${i + 1}` })}
+                        className="w-full h-full block"
+                      >
+                        <img src={url} className="w-full h-full object-cover" alt="preview" />
+                      </button>
                       <button 
                         onClick={() => {
                           setReportForm(prev => ({ ...prev, photos: prev.photos.filter((_, idx) => idx !== i) }));
@@ -3289,6 +3316,21 @@ export function Construction() {
           </button>
         </div>
       </Modal>
+
+      <MediaPickerModal
+        open={isReportMediaPickerOpen}
+        onClose={() => setIsReportMediaPickerOpen(false)}
+        onSelect={handleReportMediaSelect}
+        category="work-log"
+      />
+
+      <ImagePreviewModal
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src ?? null}
+        title={imagePreview?.title ?? 'Preview Gambar'}
+        downloadFileName={`work-log-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
+        onClose={() => setImagePreview(null)}
+      />
     </>
   );
 }

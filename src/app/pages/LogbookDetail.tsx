@@ -1,13 +1,16 @@
 import { ArrowLeft } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLogbookDetail } from '../../hooks';
 import { formatDate, resolveAssetUrl } from '../../lib/utils';
+import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import { RichTextEditor } from '../components/RichTextEditor';
 
 export function LogbookDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { item, isLoading } = useLogbookDetail(id);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
 
   if (isLoading) {
     return <div className="text-sm text-gray-500">Memuat detail logbook...</div>;
@@ -64,11 +67,22 @@ export function LogbookDetail() {
             <ul className="space-y-2">
               {item.files.map((file) => {
                 const href = resolveAssetUrl(file.file_path) || file.file_path;
+                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_path);
                 return (
                   <li key={file.id}>
-                    <a href={href} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
-                      {file.file_name || file.file_path}
-                    </a>
+                    {isImage ? (
+                      <button
+                        type="button"
+                        onClick={() => setImagePreview({ src: href, title: file.file_name || file.file_path })}
+                        className="text-sm text-primary hover:underline"
+                      >
+                        {file.file_name || file.file_path}
+                      </button>
+                    ) : (
+                      <a href={href} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
+                        {file.file_name || file.file_path}
+                      </a>
+                    )}
                   </li>
                 );
               })}
@@ -76,6 +90,14 @@ export function LogbookDetail() {
           )}
         </div>
       </div>
+
+      <ImagePreviewModal
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src ?? null}
+        title={imagePreview?.title ?? 'Preview Gambar'}
+        downloadFileName={`logbook-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}`}
+        onClose={() => setImagePreview(null)}
+      />
     </div>
   );
 }

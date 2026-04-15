@@ -1,9 +1,11 @@
 import { Edit2, Eye, Plus, Trash2, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useJobCategories, useLogbooks } from '../../hooks';
-import { formatDate } from '../../lib/utils';
-import type { Logbook, LogbookStatus } from '../../types';
+import { formatDate, getErrorMessage, resolveAssetUrl } from '../../lib/utils';
+import type { Logbook, LogbookStatus, MediaAsset } from '../../types';
+import { MediaPickerModal } from '../components/MediaPickerModal';
 import { RichTextEditor } from '../components/RichTextEditor';
 
 const STATUS_OPTIONS: LogbookStatus[] = ['Draft', 'Submitted', 'Reviewed'];
@@ -26,6 +28,19 @@ const emptyForm = (): LogbookFormState => ({
   files: [],
 });
 
+const mediaAssetToFile = async (asset: MediaAsset): Promise<File> => {
+  const assetUrl = resolveAssetUrl(asset.file_path) || asset.file_path;
+  const response = await fetch(assetUrl);
+  if (!response.ok) throw new Error('Gagal mengambil file dari gallery');
+
+  const blob = await response.blob();
+  const fileName = asset.original_name || asset.stored_name || 'gallery-image.jpg';
+
+  return new File([blob], fileName, {
+    type: blob.type || asset.mime_type || 'image/jpeg',
+  });
+};
+
 export function Logbook() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
@@ -44,6 +59,7 @@ export function Logbook() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editing, setEditing] = useState<Logbook | null>(null);
   const [form, setForm] = useState<LogbookFormState>(emptyForm);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
 
   const totalPages = pagination?.total_pages ?? 1;
 
@@ -109,6 +125,16 @@ export function Logbook() {
     setIsFormOpen(false);
     setEditing(null);
     setForm(emptyForm());
+  };
+
+  const handleMediaSelect = async (asset: MediaAsset) => {
+    try {
+      const file = await mediaAssetToFile(asset);
+      setForm((prev) => ({ ...prev, files: [...prev.files, file] }));
+      toast.success('Gambar ditambahkan dari gallery');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
   };
 
   const changePage = (next: number) => {
@@ -188,12 +214,35 @@ export function Logbook() {
             />
           </div>
           {!editing && (
-            <input
-              type="file"
-              multiple
-              onChange={(e) => setForm((p) => ({ ...p, files: Array.from(e.target.files ?? []) }))}
-              className="block w-full text-sm"
-            />
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setIsMediaPickerOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+              >
+                <Upload size={16} />
+                Tambah Gambar dari Gallery
+              </button>
+              {form.files.length > 0 && (
+                <div className="space-y-2">
+                  {form.files.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-900 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-500">{Math.round(file.size / 1024)} KB</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, files: prev.files.filter((_, i) => i !== index) }))}
+                        className="text-sm text-red-600"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           <div className="flex items-center gap-2">
             <button type="submit" className="px-4 py-2 rounded-lg bg-primary text-white">Simpan</button>
@@ -273,6 +322,13 @@ export function Logbook() {
         <Upload size={14} />
         Upload file tersedia saat tambah logbook. Untuk update, edit data inti logbook.
       </div>
+
+      <MediaPickerModal
+        open={isMediaPickerOpen}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleMediaSelect}
+        category="logbook"
+      />
     </div>
   );
 }

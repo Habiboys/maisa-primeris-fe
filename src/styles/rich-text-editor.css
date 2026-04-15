@@ -1,0 +1,25 @@
+.rich-text-editor {
+  overflow: visible;
+}
+
+.rich-text-editor .ql-toolbar.ql-snow {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 0.375rem;
+  column-gap: 0.25rem;
+  overflow: visible;
+}
+
+.rich-text-editor .ql-toolbar .ql-picker.ql-header {
+  min-width: 8.5rem;
+}
+
+.rich-text-editor .ql-toolbar .ql-picker.ql-header .ql-picker-label {
+  width: 100%;
+}
+
+.rich-text-editor .ql-toolbar .ql-picker-options {
+  z-index: 30;
+  max-height: 16rem;
+  overflow-y: auto;
+}

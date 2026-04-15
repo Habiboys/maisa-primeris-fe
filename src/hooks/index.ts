@@ -19,6 +19,7 @@ export * from './useLegal';
 export * from './useLogbookMeeting';
 export * from './useMarketing';
 export * from './useMasterData';
+export * from './useMedia';
 export * from './useProjects';
 export * from './useQualityControl';
 export * from './useSOP';

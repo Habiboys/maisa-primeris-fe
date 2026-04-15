@@ -21,16 +21,30 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useDepartments, useHousingUnits, useMaterials, usePaymentSchemes, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
 import { formatDateId } from '../../lib/date';
-import { formatRupiah } from '../../lib/utils';
+import { formatRupiah, getErrorMessage, resolveAssetUrl } from '../../lib/utils';
 import { housingService, projectService } from '../../services';
 import { departmentService } from '../../services/department.service';
 import { materialService } from '../../services/material.service';
 import { paymentSchemeService } from '../../services/paymentScheme.service';
-import type { HousingUnit, Project, ProjectStatus, ProjectType, ProjectUnit, UnitBlockRange } from '../../types';
+import type { HousingUnit, MediaAsset, Project, ProjectStatus, ProjectType, ProjectUnit, UnitBlockRange } from '../../types';
 import { ConstructionStatusManagerPanel } from '../components/ConstructionStatusManagerPanel';
+import { ImagePreviewModal } from '../components/ImagePreviewModal';
+import { MediaPickerModal } from '../components/MediaPickerModal';
 import { QCTemplateManager } from '../components/QCTemplateManager';
 import { Modal } from '../components/ui/Modal';
 import { ProjectStatusBadge } from '../components/ui/ProjectStatusBadge';
+
+const mediaAssetToFile = async (asset: MediaAsset): Promise<File> => {
+  const assetUrl = resolveAssetUrl(asset.file_path) || asset.file_path;
+  const response = await fetch(assetUrl);
+  if (!response.ok) throw new Error('Gagal mengambil file dari gallery');
+  const blob = await response.blob();
+  const fileName = asset.original_name || asset.stored_name || 'gallery-image.jpg';
+
+  return new File([blob], fileName, {
+    type: blob.type || asset.mime_type || 'image/jpeg',
+  });
+};
 
 function totalUnitsFromBlockRows(rows: Array<{ prefix: string; start: string; end: string }>): number {
   let t = 0;
@@ -337,6 +351,30 @@ export function DataMaster({ section }: DataMasterProps) {
 
   const [kavlingPhotoFile, setKavlingPhotoFile] = useState<File | null>(null);
   const [kavlingSertifikatFile, setKavlingSertifikatFile] = useState<File | null>(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [mediaTarget, setMediaTarget] = useState<'kavling-photo' | 'kavling-sertifikat' | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
+
+  const openMediaPicker = (target: 'kavling-photo' | 'kavling-sertifikat') => {
+    setMediaTarget(target);
+    setIsMediaPickerOpen(true);
+  };
+
+  const handleMediaSelect = async (asset: MediaAsset) => {
+    try {
+      const file = await mediaAssetToFile(asset);
+      if (mediaTarget === 'kavling-photo') {
+        setKavlingPhotoFile(file);
+      } else if (mediaTarget === 'kavling-sertifikat') {
+        setKavlingSertifikatFile(file);
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setIsMediaPickerOpen(false);
+      setMediaTarget(null);
+    }
+  };
 
   // ── Sinkronkan housing_units untuk project konstruksi ─────
   // Tujuan: pastikan setiap `project_unit` punya 1 record housing unit (one-to-one),
@@ -1922,24 +1960,31 @@ export function DataMaster({ section }: DataMasterProps) {
           {/* Foto Unit */}
           <div className="space-y-2">
             <h4 className="font-bold text-gray-900 border-l-4 border-primary pl-3">Foto Unit</h4>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setKavlingPhotoFile(e.target.files?.[0] ?? null)}
-              className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary/10 file:text-primary file:font-medium"
-            />
+            <button
+              type="button"
+              onClick={() => openMediaPicker('kavling-photo')}
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+            >
+              Pilih Foto dari Gallery
+            </button>
             <div className="flex flex-wrap items-center gap-4">
               {editingKavling?.photo_url && !kavlingPhotoFile && (
-                <div className="w-28 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                <div
+                  onClick={() => setImagePreview({ src: resolveAssetUrl(editingKavling.photo_url) || '', title: `Foto unit ${editingKavling.unit_code}` })}
+                  className="w-28 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:opacity-80 transition-opacity"
+                >
                   <img
-                    src={`${import.meta.env.VITE_ASSET_URL ?? ''}${editingKavling.photo_url}`}
+                    src={resolveAssetUrl(editingKavling.photo_url) || ''}
                     alt={`Foto unit ${editingKavling.unit_code}`}
                     className="w-full h-full object-cover"
                   />
                 </div>
               )}
               {kavlingPhotoFile && (
-                <div className="w-28 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                <div
+                  onClick={() => setImagePreview({ src: URL.createObjectURL(kavlingPhotoFile), title: `Preview foto ${editingKavling?.unit_code}` })}
+                  className="w-28 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:opacity-80 transition-opacity"
+                >
                   <img
                     src={URL.createObjectURL(kavlingPhotoFile)}
                     alt="Preview foto"
@@ -1953,19 +1998,20 @@ export function DataMaster({ section }: DataMasterProps) {
           {/* File Sertifikat */}
           <div className="space-y-2">
             <h4 className="font-bold text-gray-900 border-l-4 border-primary pl-3">File Sertifikat</h4>
-            <input
-              type="file"
-              accept=".pdf,image/*"
-              onChange={(e) => setKavlingSertifikatFile(e.target.files?.[0] ?? null)}
-              className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary/10 file:text-primary file:font-medium"
-            />
+            <button
+              type="button"
+              onClick={() => openMediaPicker('kavling-sertifikat')}
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+            >
+              Pilih File dari Gallery
+            </button>
             <p className="text-xs text-gray-500">Format: PDF/JPG/JPEG/PNG (maks. 5MB)</p>
             <div className="text-sm">
               {kavlingSertifikatFile ? (
                 <span className="text-primary font-medium">File dipilih: {kavlingSertifikatFile.name}</span>
               ) : editingKavling?.sertifikat_file_url ? (
                 <a
-                  href={`${import.meta.env.VITE_ASSET_URL ?? ''}${editingKavling.sertifikat_file_url}`}
+                  href={resolveAssetUrl(editingKavling.sertifikat_file_url) || '#'}
                   target="_blank"
                   rel="noreferrer"
                   className="text-primary hover:underline"
@@ -2002,6 +2048,24 @@ export function DataMaster({ section }: DataMasterProps) {
           </div>
         </div>
       </Modal>
+
+      <MediaPickerModal
+        open={isMediaPickerOpen}
+        onClose={() => {
+          setIsMediaPickerOpen(false);
+          setMediaTarget(null);
+        }}
+        onSelect={handleMediaSelect}
+        category={mediaTarget === 'kavling-sertifikat' ? 'kavling-sertifikat' : 'kavling-photo'}
+      />
+
+      <ImagePreviewModal
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src ?? null}
+        title={imagePreview?.title ?? 'Preview Gambar'}
+        downloadFileName={`kavling-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
+        onClose={() => setImagePreview(null)}
+      />
     </div>
   );
 }

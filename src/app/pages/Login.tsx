@@ -42,7 +42,7 @@ export function Login() {
         {/* Left Side: Illustration/Brand */}
         <div className="hidden lg:block relative bg-[#b7860f]">
           <ImageWithFallback 
-            src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=2070&auto=format&fit=crop" 
+            src="/images/rumah.webp" 
             alt="Real Estate" 
             className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-40"
           />

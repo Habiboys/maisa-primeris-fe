@@ -19,14 +19,15 @@ import {
     User as UserIcon,
     XCircle as XCircleIcon
 } from 'lucide-react';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirmDialog, useQCSubmissions, useQCTemplates } from '../../hooks';
 import { formatDateTimeId } from '../../lib/date';
-import { compressImage, resolveAssetUrl } from '../../lib/utils';
+import { resolveAssetUrl } from '../../lib/utils';
 import { qcService } from '../../services';
-import type { QcSubmission, QcSubmissionInput, QcTemplate } from '../../types';
+import type { MediaAsset, QcSubmission, QcSubmissionInput, QcTemplate } from '../../types';
 import { ImagePreviewModal } from './ImagePreviewModal';
+import { MediaPickerModal } from './MediaPickerModal';
 
 type ChecklistItemState = {
   id: string;
@@ -81,6 +82,8 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [photoTarget, setPhotoTarget] = useState<{ sectionId: string; itemId: string } | null>(null);
   const draftLoadedRef = useRef(false);
   // Tracks the ID of an existing Draft that was pre-filled into the form,
   // so we UPDATE it instead of creating a duplicate.
@@ -273,16 +276,17 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
     }));
   };
 
-  const handleFileUpload = async (sectionId: string, itemId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const compressed = await compressImage(file);
-      updateItem(sectionId, itemId, 'photo', compressed);
-      toast.success('Foto berhasil diunggah');
-    } catch {
-      toast.error('Gagal memproses foto');
-    }
+  const openPhotoPicker = (sectionId: string, itemId: string) => {
+    setPhotoTarget({ sectionId, itemId });
+    setIsMediaPickerOpen(true);
+  };
+
+  const handleMediaSelect = (asset: MediaAsset) => {
+    if (!photoTarget) return;
+    updateItem(photoTarget.sectionId, photoTarget.itemId, 'photo', asset.file_path);
+    setIsMediaPickerOpen(false);
+    setPhotoTarget(null);
+    toast.success('Foto berhasil dipilih dari gallery');
   };
 
   const openImagePreview = (src: string | null, title: string) => {
@@ -505,13 +509,11 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                                     </div>
                                   ) : (
                                     <>
-                                      <input 
-                                        type="file" 
-                                        accept="image/*" 
-                                        onChange={(e) => handleFileUpload(section.id, item.id, e)}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
-                                      />
-                                      <button className="p-2 bg-gray-100 text-gray-400 rounded-lg hover:bg-gray-200 transition-colors">
+                                      <button
+                                        type="button"
+                                        onClick={() => openPhotoPicker(section.id, item.id)}
+                                        className="p-2 bg-gray-100 text-gray-400 rounded-lg hover:bg-gray-200 transition-colors"
+                                      >
                                         <Camera size={18} />
                                       </button>
                                     </>
@@ -795,6 +797,16 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                   <FileText size={24} />
                 </div>
                 <div>
+
+              <MediaPickerModal
+                open={isMediaPickerOpen}
+                onClose={() => {
+                  setIsMediaPickerOpen(false);
+                  setPhotoTarget(null);
+                }}
+                onSelect={handleMediaSelect}
+                category="qc"
+              />
                   <h3 className="text-xl font-bold">Detail Laporan QC {viewDetail.id}</h3>
                   <p className="text-sm text-gray-500">{viewDetail.project?.name ?? '-'} • Unit {viewDetail.unit_no ?? '-'} • {viewDetail.submission_date}</p>
                 </div>

@@ -1,8 +1,8 @@
 import { CheckCircle2, Download, Edit2, Key, Loader2, Plus, Search, Trash2, UserMinus, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useActivityLogs, useConfirmDialog, useUsers } from '../../hooks';
 import { useAuth } from '../../context/AuthContext';
+import { useActivityLogs, useConfirmDialog, useUsers } from '../../hooks';
 import type { UserRole } from '../../types';
 
 export function UserManagement() {
