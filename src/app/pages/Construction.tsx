@@ -622,6 +622,8 @@ export function Construction() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'units' | 'inventory' | 'reports' | 'map' | 'schedule'>('units');
+  const [unitSearchQuery, setUnitSearchQuery] = useState('');
+  const [unitStatusFilter, setUnitStatusFilter] = useState('all');
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     // Default to the latest date available in logs, or today if no logs
     return formatDateId(new Date());
@@ -677,6 +679,11 @@ export function Construction() {
       setSvgContent(null);
     }
   }, [activeTab, selectedProject?.layout_svg, selectedProject?.units, constructionStatuses]);
+
+  useEffect(() => {
+    setUnitSearchQuery('');
+    setUnitStatusFilter('all');
+  }, [selectedProjectId]);
 
 
 
@@ -746,6 +753,27 @@ export function Construction() {
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.location.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const unitStatusOptions = useMemo(() => {
+    if (!selectedProject || selectedProject.type !== 'cluster') return [] as string[];
+    return Array.from(new Set(selectedProject.units.map(unit => unit.status)))
+      .sort((a, b) => {
+        const aOrder = constructionStatuses.find((s) => s.name === a)?.order ?? Number.MAX_SAFE_INTEGER;
+        const bOrder = constructionStatuses.find((s) => s.name === b)?.order ?? Number.MAX_SAFE_INTEGER;
+        return aOrder - bOrder;
+      });
+  }, [selectedProject, constructionStatuses]);
+
+  const filteredDetailUnits = useMemo(() => {
+    if (!selectedProject || selectedProject.type !== 'cluster') return [] as ProjectUnit[];
+
+    const q = unitSearchQuery.trim().toLowerCase();
+    return selectedProject.units.filter((unit) => {
+      const matchesSearch = !q || unit.no.toLowerCase().includes(q) || (unit.tipe ?? '').toLowerCase().includes(q);
+      const matchesStatus = unitStatusFilter === 'all' || unit.status === unitStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [selectedProject, unitSearchQuery, unitStatusFilter]);
 
   const materialOptions = useMemo(
     () => masterMaterials.slice().sort((a, b) => a.name.localeCompare(b.name, 'id')),
@@ -1462,7 +1490,6 @@ export function Construction() {
             <div className="flex border-b border-gray-100 bg-gray-50/30 overflow-x-auto no-scrollbar">
               {[
                 { id: 'units', label: selectedProject.type === 'standalone' ? 'Info Bangunan' : 'Unit Project', icon: LayoutGrid },
-                { id: 'schedule', label: 'Time Schedule', icon: Calendar },
                 { id: 'inventory', label: 'Logistik Material', icon: Box },
                 { id: 'reports', label: 'Laporan Pekerjaan', icon: ClipboardList },
                 ...(selectedProject.type === 'cluster' ? [{ id: 'map', label: 'Peta Kawasan', icon: MapIcon }] : []),
@@ -1565,7 +1592,7 @@ export function Construction() {
                     <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
                       <Info className="w-5 h-5 text-blue-600 flex-shrink-0" />
                       <p className="text-sm text-blue-900">
-                        <span className="font-bold">Bangunan Standalone</span> - Untuk melihat jadwal detail dan time schedule, klik tab "Time Schedule" di atas.
+                        <span className="font-bold">Bangunan Standalone</span> - Halaman ini menampilkan ringkasan progres, logistik, dan laporan pekerjaan.
                       </p>
                     </div>
                   </div>
@@ -1579,7 +1606,9 @@ export function Construction() {
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <h3 className="font-bold text-gray-900">Unit Project</h3>
-                            <p className="text-sm text-gray-500 mt-1">Total {selectedProject.units.length} unit rumah</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              Menampilkan {filteredDetailUnits.length} dari {selectedProject.units.length} unit rumah
+                            </p>
                           </div>
                           <button
                             type="button"
@@ -1592,8 +1621,33 @@ export function Construction() {
                           </button>
                         </div>
 
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="relative md:col-span-2">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <input
+                              type="text"
+                              value={unitSearchQuery}
+                              onChange={(e) => setUnitSearchQuery(e.target.value)}
+                              placeholder="Cari unit (contoh: A-01) atau tipe..."
+                              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                          </div>
+                          <div>
+                            <select
+                              value={unitStatusFilter}
+                              onChange={(e) => setUnitStatusFilter(e.target.value)}
+                              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                              <option value="all">Semua Status</option>
+                              {unitStatusOptions.map((status) => (
+                                <option key={status} value={status}>{status}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {selectedProject.units.map((unit, idx) => (
+                    {filteredDetailUnits.map((unit, idx) => (
                     <div 
                       key={idx} 
                       className="group/card border border-gray-100 rounded-xl bg-white hover:border-primary/30 transition-all shadow-sm overflow-hidden flex flex-col"
@@ -1690,6 +1744,13 @@ export function Construction() {
                     </div>
                   ))}
                       </div>
+
+                      {filteredDetailUnits.length === 0 && (
+                        <div className="py-10 text-center rounded-2xl border border-dashed border-gray-200 bg-gray-50">
+                          <p className="text-sm font-bold text-gray-700">Unit tidak ditemukan</p>
+                          <p className="text-xs text-gray-500 mt-1">Ubah kata kunci pencarian atau filter status unit.</p>
+                        </div>
+                      )}
                     </>
                     )}
                   </div>
@@ -3033,7 +3094,12 @@ export function Construction() {
                         <img src={url} className="w-full h-full object-cover" alt="preview" />
                       </button>
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
+                          const confirmed = await showConfirm({
+                            title: 'Hapus Foto',
+                            description: 'Apakah Anda yakin ingin menghapus foto ini dari laporan?'
+                          });
+                          if (!confirmed) return;
                           setReportForm(prev => ({ ...prev, photos: prev.photos.filter((_, idx) => idx !== i) }));
                           setReportFiles(prev => prev.filter((_, idx) => idx !== i));
                         }}
