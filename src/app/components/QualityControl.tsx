@@ -32,7 +32,7 @@ import { MediaPickerModal } from './MediaPickerModal';
 type ChecklistItemState = {
   id: string;
   description: string;
-  result: 'OK' | 'Not OK' | null;
+  result: 'OK' | 'Not OK' | 'N/A' | null;
   photo: string | null;
   notes: string;
   // Waktu terakhir item ini diperbarui (berasal dari `updated_at`/`created_at` hasil QC)
@@ -475,11 +475,17 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                                   >
                                     <CheckCircle2Icon size={18} />
                                   </button>
-                                  <button 
+                                  <button
                                     onClick={() => updateItem(section.id, item.id, 'result', 'Not OK')}
                                     className={`p-2 rounded-lg transition-all border ${item.result === 'Not OK' ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-gray-200 text-gray-300 hover:border-red-300'}`}
                                   >
                                     <XCircleIcon size={18} />
+                                  </button>
+                                  <button
+                                    onClick={() => updateItem(section.id, item.id, 'result', item.result === 'N/A' ? null : 'N/A')}
+                                    className={`px-2 py-1 rounded-lg transition-all border text-xs font-bold ${item.result === 'N/A' ? 'bg-gray-400 border-gray-400 text-white' : 'bg-white border-gray-200 text-gray-300 hover:border-gray-400'}`}
+                                  >
+                                    N/A
                                   </button>
                                 </div>
                               </td>
@@ -862,7 +868,9 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                                   (item.result || '').toUpperCase() === 'OK'
                                     ? 'bg-green-50 text-green-600'
-                                    : (item.result ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500')
+                                    : item.result === 'N/A'
+                                    ? 'bg-gray-100 text-gray-500'
+                                    : (item.result ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-400')
                                 }`}>
                                   {item.result || '-'}
                                 </span>
