@@ -36,8 +36,12 @@ api.interceptors.request.use(
     }
     // Jika body adalah FormData, hapus Content-Type agar browser
     // otomatis set multipart/form-data beserta boundary-nya.
+    // Sekaligus bump timeout — upload + kompres gambar di server bisa >15s.
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
+      if (!config.timeout || config.timeout < 120_000) {
+        config.timeout = 120_000; // 2 menit untuk upload
+      }
     }
     return config;
   },

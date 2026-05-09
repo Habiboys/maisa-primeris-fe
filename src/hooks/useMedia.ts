@@ -32,15 +32,16 @@ export function useMedia(initialParams?: MediaListParams) {
   }, [fetch]);
 
   const upload = async (payload: UploadMediaPayload) => {
-    try {
-      const row = await mediaService.upload(payload);
-      toast.success('Media berhasil diupload');
-      await fetch();
-      return row;
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-      throw err;
-    }
+    const promise = mediaService.upload(payload);
+    toast.promise(promise, {
+      loading: 'Mengupload file...',
+      success: 'Media berhasil diupload',
+      error: (err) => getErrorMessage(err),
+    });
+    const row = await promise;
+    // Refresh list di background — tidak perlu di-await supaya upload terasa instan
+    void fetch();
+    return row;
   };
 
   const remove = async (id: string) => {

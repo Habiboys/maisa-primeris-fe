@@ -57,7 +57,7 @@ import { TenantDetail } from './pages/TenantDetail';
 import { Transaksi } from './pages/Transaksi';
 import { UserManagement } from './pages/UserManagement';
 
-type MenuId = 'dashboard' | 'users' | 'absensi' | 'finance' | 'construction' | 'quality' | 'marketing' | 'sop' | 'transaksi' | 'saas' | 'datamaster' | 'logbook' | 'notulensi' | 'gallery';
+type MenuId = 'dashboard' | 'users' | 'absensi' | 'finance' | 'construction' | 'quality' | 'marketing' | 'sop' | 'transaksi' | 'saas' | 'datamaster' | 'logbook' | 'notulensi' | 'media';
 
 interface MenuItem {
   id: MenuId;
@@ -301,7 +301,7 @@ export default function App() {
       { id: 'marketing', label: 'Marketing & Penjualan', icon: Megaphone, path: '/marketing', roles: ['Platform Owner', 'Super Admin'] },
       { id: 'logbook', label: 'Logbook', icon: FileCheck, path: '/logbook', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
       { id: 'notulensi', label: 'Notulensi', icon: ClipboardList, path: '/notulensi', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
-      { id: 'gallery', label: 'Media', icon: Image, path: '/gallery', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
+      { id: 'media', label: 'Media', icon: Image, path: '/media', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
       { id: 'sop', label: 'SOP', icon: FileText, path: '/sop', roles: ['Platform Owner', 'Super Admin', 'Project Management'] },
       { id: 'absensi', label: 'Absensi Karyawan', icon: Clock, path: '/absensi', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management'] },
       { id: 'users', label: 'User Management', icon: Users, path: '/users', roles: ['Platform Owner', 'Super Admin'] },
@@ -328,7 +328,7 @@ export default function App() {
     marketing: <Marketing />,
     logbook: <Logbook />,
     notulensi: <Notulensi />,
-    gallery: <MediaGallery />,
+    media: <MediaGallery />,
     sop: <SOP />,
     transaksi: <Transaksi />,
     saas: <SaaSManagement />,
