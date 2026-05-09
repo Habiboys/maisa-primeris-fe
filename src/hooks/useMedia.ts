@@ -12,7 +12,7 @@ export function useMedia(initialParams?: MediaListParams) {
 
   useEffect(() => {
     if (initialParams !== undefined) setParams(initialParams);
-  }, [initialParams?.search, initialParams?.page, initialParams?.limit, initialParams?.category]);
+  }, [initialParams?.search, initialParams?.page, initialParams?.limit, initialParams?.category, initialParams?.type]);
 
   const fetch = useCallback(async () => {
     setIsLoading(true);

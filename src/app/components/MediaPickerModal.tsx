@@ -2,7 +2,7 @@ import { FileText, Search, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useMedia } from '../../hooks';
 import { resolveAssetUrl } from '../../lib/utils';
-import type { MediaAsset } from '../../types';
+import type { MediaAsset, MediaTypeFilter } from '../../types';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
 interface MediaPickerModalProps {
@@ -21,7 +21,11 @@ interface MediaPickerModalProps {
 export function MediaPickerModal({ open, onClose, onSelect, category, accept = 'image/*,application/pdf' }: MediaPickerModalProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState('');
-  const { items, isLoading, upload } = useMedia({ page: 1, limit: 24, search });
+  const [typeFilter, setTypeFilter] = useState<MediaTypeFilter | ''>('');
+  const { items, isLoading, upload } = useMedia({ page: 1, limit: 24, search, type: typeFilter || undefined });
+
+  const acceptsImage = accept.includes('image/');
+  const acceptsPdf = accept.includes('application/pdf');
 
   if (!open) return null;
 
@@ -45,6 +49,24 @@ export function MediaPickerModal({ open, onClose, onSelect, category, accept = '
               className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200"
             />
           </div>
+          {(acceptsImage && acceptsPdf) && (
+            <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+              {([
+                { value: '', label: 'Semua' },
+                { value: 'image', label: 'Gambar' },
+                { value: 'pdf', label: 'PDF' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value || 'all'}
+                  type="button"
+                  onClick={() => setTypeFilter(opt.value as MediaTypeFilter | '')}
+                  className={`px-3 py-2 transition-colors ${typeFilter === opt.value ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
           <input
             ref={fileRef}
             type="file"

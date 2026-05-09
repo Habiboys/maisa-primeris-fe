@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, Edit2, Key, Loader2, Plus, Search, Trash2, UserMinus, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Edit2, Eye, EyeOff, Key, Loader2, Plus, Search, Trash2, UserMinus, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
@@ -22,7 +22,9 @@ export function UserManagement() {
     name: '',
     email: '',
     role: 'Project Management' as UserRole,
+    password: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
 
   // Hanya tampilkan user dari tenant yang sama (company_id); tenant tidak lihat Platform Owner
@@ -42,13 +44,15 @@ export function UserManagement() {
 
   const handleOpenAddModal = () => {
     setEditingUser(null);
-    setFormData({ name: '', email: '', role: 'Project Management' });
+    setFormData({ name: '', email: '', role: 'Project Management', password: '' });
+    setShowPassword(false);
     setShowModal(true);
   };
 
   const handleOpenEditModal = (user: typeof users[0]) => {
     setEditingUser({ id: user.id, name: user.name, email: user.email, role: user.role });
-    setFormData({ name: user.name, email: user.email, role: user.role });
+    setFormData({ name: user.name, email: user.email, role: user.role, password: '' });
+    setShowPassword(false);
     setShowModal(true);
   };
 
@@ -56,6 +60,16 @@ export function UserManagement() {
     if (!formData.name || !formData.email) {
       toast.error('Mohon lengkapi nama dan email');
       return;
+    }
+    if (!editingUser) {
+      if (!formData.password) {
+        toast.error('Password wajib diisi');
+        return;
+      }
+      if (formData.password.length < 6) {
+        toast.error('Password minimal 6 karakter');
+        return;
+      }
     }
     if (isSavingUser) return;
     setIsSavingUser(true);
@@ -67,7 +81,7 @@ export function UserManagement() {
           name: formData.name,
           email: formData.email,
           role: formData.role,
-          password: 'Maisa@2026',
+          password: formData.password,
           ...(currentCompanyId ? { company_id: currentCompanyId } : {}),
         });
       }
@@ -362,7 +376,7 @@ export function UserManagement() {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Role Akses</label>
-                <select 
+                <select
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary outline-none transition-all"
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
@@ -374,6 +388,30 @@ export function UserManagement() {
                   <option value="Super Admin">Super Admin</option>
                 </select>
               </div>
+              {!editingUser && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700">Password Awal</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary outline-none transition-all"
+                      placeholder="Minimal 6 karakter"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600"
+                      title={showPassword ? 'Sembunyikan' : 'Tampilkan'}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">User dapat mengubah password setelah login pertama.</p>
+                </div>
+              )}
             </div>
             <div className="p-6 bg-gray-50 flex items-center justify-end gap-3">
               <button 

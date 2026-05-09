@@ -16,8 +16,11 @@ export interface MediaAsset {
   updated_at: string;
 }
 
+export type MediaTypeFilter = 'image' | 'pdf';
+
 export interface MediaListParams extends PaginationParams {
   category?: string;
+  type?: MediaTypeFilter;
 }
 
 export interface UploadMediaPayload {

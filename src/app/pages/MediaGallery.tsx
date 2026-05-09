@@ -1,7 +1,8 @@
 import { FileText, ImagePlus, Search, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { useMedia } from '../../hooks';
+import { useConfirmDialog, useMedia } from '../../hooks';
 import { formatDateTime, resolveAssetUrl } from '../../lib/utils';
+import type { MediaTypeFilter } from '../../types';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
@@ -10,20 +11,54 @@ export function MediaGallery() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
+  const [typeFilter, setTypeFilter] = useState<MediaTypeFilter | ''>('');
   const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
 
   const { items, pagination, isLoading, setParams, upload, remove } = useMedia({ page: 1, limit: 20 });
+  const { showConfirm, ConfirmDialog } = useConfirmDialog();
+
+  const applyFilters = (overrides: Partial<{ page: number; limit: number; search: string; type: MediaTypeFilter | '' }> = {}) => {
+    const next = {
+      page: overrides.page ?? 1,
+      limit: overrides.limit ?? limit,
+      search: overrides.search ?? search,
+      type: overrides.type ?? typeFilter,
+    };
+    setParams({
+      page: next.page,
+      limit: next.limit,
+      search: next.search,
+      type: next.type || undefined,
+    });
+  };
 
   const applySearch = () => {
     setPage(1);
-    setParams({ page: 1, limit, search });
+    applyFilters({ page: 1 });
+  };
+
+  const onChangeTypeFilter = (next: MediaTypeFilter | '') => {
+    setTypeFilter(next);
+    setPage(1);
+    applyFilters({ page: 1, type: next });
   };
 
   const changePage = (next: number) => {
     const total = pagination?.total_pages ?? 1;
     const target = Math.max(1, Math.min(total, next));
     setPage(target);
-    setParams({ page: target, limit, search });
+    applyFilters({ page: target });
+  };
+
+  const handleDelete = async (item: { id: string; original_name: string | null; stored_name: string }) => {
+    const ok = await showConfirm({
+      title: 'Hapus Media',
+      description: `Yakin ingin menghapus "${item.original_name || item.stored_name}"? Tindakan ini tidak dapat dibatalkan.`,
+      confirmText: 'Hapus',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await remove(item.id);
   };
 
   return (
@@ -56,9 +91,26 @@ export function MediaGallery() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') applySearch(); }}
             placeholder="Cari nama file..."
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200"
           />
+        </div>
+        <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+          {([
+            { value: '', label: 'Semua' },
+            { value: 'image', label: 'Gambar' },
+            { value: 'pdf', label: 'PDF' },
+          ] as const).map((opt) => (
+            <button
+              key={opt.value || 'all'}
+              type="button"
+              onClick={() => onChangeTypeFilter(opt.value as MediaTypeFilter | '')}
+              className={`px-3 py-2 transition-colors ${typeFilter === opt.value ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
         <button type="button" onClick={applySearch} className="px-3 py-2 rounded-lg bg-gray-900 text-white">Terapkan</button>
       </div>
@@ -107,7 +159,7 @@ export function MediaGallery() {
                   <div className="pt-1">
                     <button
                       type="button"
-                      onClick={() => remove(item.id)}
+                      onClick={() => handleDelete(item)}
                       className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700"
                     >
                       <Trash2 size={12} /> Hapus
@@ -130,7 +182,7 @@ export function MediaGallery() {
               const next = Number(e.target.value);
               setLimit(next);
               setPage(1);
-              setParams({ page: 1, limit: next, search });
+              applyFilters({ page: 1, limit: next });
             }}
             className="px-2 py-1 rounded border border-gray-200"
           >
@@ -151,6 +203,7 @@ export function MediaGallery() {
         downloadFileName={`media-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
         onClose={() => setImagePreview(null)}
       />
+      {ConfirmDialog}
     </div>
   );
 }
