@@ -1,11 +1,12 @@
 import BlotFormatter from 'quill-blot-formatter';
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { toast } from 'sonner';
-import { getErrorMessage, resolveAssetUrl } from '../../lib/utils';
-import { mediaService } from '../../services';
+import { resolveAssetUrl } from '../../lib/utils';
+import type { MediaAsset } from '../../types';
 import '../../styles/rich-text-editor.css';
+import { MediaPickerModal } from './MediaPickerModal';
 
 const quillRegistry = Quill as unknown as {
   imports?: Record<string, unknown>;
@@ -30,6 +31,8 @@ export function RichTextEditor({
   readOnly,
 }: RichTextEditorProps) {
   const quillRef = useRef<ReactQuill | null>(null);
+  const pendingRangeRef = useRef<{ index: number; length: number } | null>(null);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const modules = useMemo(() => {
     if (readOnly) return { toolbar: false };
@@ -45,37 +48,37 @@ export function RichTextEditor({
           ['clean'],
         ],
         handlers: {
-          image: async () => {
-            const input = document.createElement('input');
-            input.setAttribute('type', 'file');
-            input.setAttribute('accept', 'image/*');
-            input.click();
-
-            input.onchange = async () => {
-              const file = input.files?.[0];
-              if (!file) return;
-
-              try {
-                const uploaded = await mediaService.upload({ file, category: 'editor' });
-                const uploadedUrl = resolveAssetUrl(uploaded.file_path);
-                if (!uploadedUrl) return;
-
-                const editor = quillRef.current?.getEditor();
-                if (!editor) return;
-
-                const range = editor.getSelection(true);
-                const index = range?.index ?? editor.getLength();
-                editor.insertEmbed(index, 'image', uploadedUrl, 'user');
-                editor.setSelection(index + 1, 0, 'user');
-              } catch (err) {
-                toast.error(getErrorMessage(err));
-              }
-            };
+          image: function () {
+            const editor = quillRef.current?.getEditor();
+            const range = editor?.getSelection(true);
+            pendingRangeRef.current = range
+              ? { index: range.index, length: range.length }
+              : { index: editor?.getLength() ?? 0, length: 0 };
+            setIsPickerOpen(true);
           },
         },
       },
     };
   }, [readOnly]);
+
+  const handleMediaSelect = (asset: MediaAsset) => {
+    setIsPickerOpen(false);
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+
+    if (!asset.mime_type?.startsWith('image/')) {
+      toast.error('Hanya file gambar yang bisa disisipkan ke editor. Untuk PDF, lampirkan via tombol upload file.');
+      return;
+    }
+
+    const url = resolveAssetUrl(asset.file_path);
+    if (!url) return;
+
+    const range = pendingRangeRef.current ?? { index: editor.getLength(), length: 0 };
+    editor.insertEmbed(range.index, 'image', url, 'user');
+    editor.setSelection(range.index + 1, 0, 'user');
+    pendingRangeRef.current = null;
+  };
 
   return (
     <div className="rich-text-editor rounded-lg border border-gray-200 bg-white">
@@ -87,6 +90,16 @@ export function RichTextEditor({
         placeholder={placeholder}
         readOnly={readOnly}
         modules={modules}
+      />
+      <MediaPickerModal
+        open={isPickerOpen}
+        onClose={() => {
+          setIsPickerOpen(false);
+          pendingRangeRef.current = null;
+        }}
+        onSelect={handleMediaSelect}
+        category="editor"
+        accept="image/*"
       />
     </div>
   );

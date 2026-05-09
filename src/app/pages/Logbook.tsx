@@ -31,7 +31,7 @@ const emptyForm = (): LogbookFormState => ({
 const mediaAssetToFile = async (asset: MediaAsset): Promise<File> => {
   const assetUrl = resolveAssetUrl(asset.file_path) || asset.file_path;
   const response = await fetch(assetUrl);
-  if (!response.ok) throw new Error('Gagal mengambil file dari gallery');
+  if (!response.ok) throw new Error('Gagal mengambil file dari media');
 
   const blob = await response.blob();
   const fileName = asset.original_name || asset.stored_name || 'gallery-image.jpg';
@@ -131,7 +131,7 @@ export function Logbook() {
     try {
       const file = await mediaAssetToFile(asset);
       setForm((prev) => ({ ...prev, files: [...prev.files, file] }));
-      toast.success('Gambar ditambahkan dari gallery');
+      toast.success('File ditambahkan dari media');
     } catch (err) {
       toast.error(getErrorMessage(err));
     }
@@ -195,15 +195,27 @@ export function Logbook() {
         <form onSubmit={onSubmit} className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
           <h2 className="font-semibold text-gray-900">{editing ? 'Edit Logbook' : 'Tambah Logbook'}</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <input type="date" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} className="px-3 py-2 rounded-lg border border-gray-200" required />
-            <select value={form.job_category_id} onChange={(e) => setForm((p) => ({ ...p, job_category_id: e.target.value }))} className="px-3 py-2 rounded-lg border border-gray-200" required>
-              <option value="">Pilih kategori kerja</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <input type="number" min={0} max={100} value={form.progress} onChange={(e) => setForm((p) => ({ ...p, progress: e.target.value }))} placeholder="Progress %" className="px-3 py-2 rounded-lg border border-gray-200" />
-            <select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as LogbookStatus }))} className="px-3 py-2 rounded-lg border border-gray-200">
-              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-700">Tanggal</p>
+              <input type="date" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200" required />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-700">Kategori Pekerjaan</p>
+              <select value={form.job_category_id} onChange={(e) => setForm((p) => ({ ...p, job_category_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200" required>
+                <option value="">Pilih kategori kerja</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-700">Progress (%)</p>
+              <input type="number" min={0} max={100} value={form.progress} onChange={(e) => setForm((p) => ({ ...p, progress: e.target.value }))} placeholder="0 - 100" className="w-full px-3 py-2 rounded-lg border border-gray-200" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-700">Status</p>
+              <select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as LogbookStatus }))} className="w-full px-3 py-2 rounded-lg border border-gray-200">
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700">Deskripsi Kegiatan</p>
@@ -221,7 +233,7 @@ export function Logbook() {
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm"
               >
                 <Upload size={16} />
-                Tambah Gambar dari Gallery
+                Tambah File dari Media
               </button>
               {form.files.length > 0 && (
                 <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { ImagePlus, Search, Trash2 } from 'lucide-react';
+import { FileText, ImagePlus, Search, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useMedia } from '../../hooks';
 import { formatDateTime, resolveAssetUrl } from '../../lib/utils';
@@ -30,13 +30,13 @@ export function MediaGallery() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Gallery</h1>
-          <p className="text-sm text-gray-500">Semua upload gambar terpusat. Maks 2MB, dikompres server ke target ±500KB.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Media</h1>
+          <p className="text-sm text-gray-500">Semua upload file terpusat (gambar & PDF). Maks 2MB. Gambar otomatis dikompres ke target ±500KB.</p>
         </div>
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf"
           className="hidden"
           onChange={async (e) => {
             const file = e.target.files?.[0];
@@ -46,7 +46,7 @@ export function MediaGallery() {
           }}
         />
         <button type="button" onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white">
-          <ImagePlus size={16} /> Upload Gambar
+          <ImagePlus size={16} /> Upload File
         </button>
       </div>
 
@@ -65,19 +65,38 @@ export function MediaGallery() {
 
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         {isLoading ? (
-          <p className="text-sm text-gray-500">Memuat gallery...</p>
+          <p className="text-sm text-gray-500">Memuat media...</p>
         ) : items.length === 0 ? (
           <p className="text-sm text-gray-500">Belum ada media.</p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
-            {items.map((item) => (
+            {items.map((item) => {
+              const isImage = item.mime_type?.startsWith('image/');
+              const url = resolveAssetUrl(item.file_path) || '';
+              return (
               <div key={item.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                <div className="cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setImagePreview({ src: resolveAssetUrl(item.file_path) || '', title: item.original_name || item.stored_name })}>
-                  <ImageWithFallback
-                    src={resolveAssetUrl(item.file_path) || ''}
-                    alt={item.original_name || item.stored_name}
-                    className="w-full aspect-square object-cover"
-                  />
+                <div
+                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => {
+                    if (isImage) {
+                      setImagePreview({ src: url, title: item.original_name || item.stored_name });
+                    } else {
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                >
+                  {isImage ? (
+                    <ImageWithFallback
+                      src={url}
+                      alt={item.original_name || item.stored_name}
+                      className="w-full aspect-square object-cover"
+                    />
+                  ) : (
+                    <div className="w-full aspect-square flex flex-col items-center justify-center bg-red-50 text-red-600 p-3">
+                      <FileText size={40} />
+                      <p className="text-[10px] mt-2 truncate w-full text-center font-medium">PDF</p>
+                    </div>
+                  )}
                 </div>
                 <div className="p-2 space-y-1">
                   <p className="text-xs font-medium text-gray-900 truncate" title={item.original_name || item.stored_name}>
@@ -96,7 +115,8 @@ export function MediaGallery() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

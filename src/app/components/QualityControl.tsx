@@ -592,6 +592,15 @@ export function QualityControl({ initialProject = '', initialProjectId, initialU
           downloadFileName={`qc-${(imagePreview?.title ?? 'gambar').replace(/\s+/g, '-').toLowerCase()}.jpg`}
           onClose={() => setImagePreview(null)}
         />
+        <MediaPickerModal
+          open={isMediaPickerOpen}
+          onClose={() => {
+            setIsMediaPickerOpen(false);
+            setPhotoTarget(null);
+          }}
+          onSelect={handleMediaSelect}
+          category="qc"
+        />
       </div>
     );
   }
