@@ -1,12 +1,13 @@
-import { Edit2, Eye, Plus, Trash2, Upload } from 'lucide-react';
+import { Edit2, Eye, FileText, Plus, Trash2, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useJobCategories, useLogbooks } from '../../hooks';
-import { formatDate, getErrorMessage, resolveAssetUrl } from '../../lib/utils';
-import type { Logbook, LogbookStatus, MediaAsset } from '../../types';
+import { useConfirmDialog, useJobCategories, useLogbooks } from '../../hooks';
+import { formatDate, resolveAssetUrl } from '../../lib/utils';
+import type { Logbook, LogbookMediaRef, LogbookStatus, MediaAsset } from '../../types';
 import { MediaPickerModal } from '../components/MediaPickerModal';
 import { RichTextEditor } from '../components/RichTextEditor';
+import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
 const STATUS_OPTIONS: LogbookStatus[] = ['Draft', 'Submitted', 'Reviewed'];
 
@@ -17,6 +18,7 @@ interface LogbookFormState {
   progress: string;
   status: LogbookStatus;
   files: File[];
+  mediaRefs: LogbookMediaRef[];
 }
 
 const emptyForm = (): LogbookFormState => ({
@@ -26,23 +28,12 @@ const emptyForm = (): LogbookFormState => ({
   progress: '0',
   status: 'Draft',
   files: [],
+  mediaRefs: [],
 });
-
-const mediaAssetToFile = async (asset: MediaAsset): Promise<File> => {
-  const assetUrl = resolveAssetUrl(asset.file_path) || asset.file_path;
-  const response = await fetch(assetUrl);
-  if (!response.ok) throw new Error('Gagal mengambil file dari media');
-
-  const blob = await response.blob();
-  const fileName = asset.original_name || asset.stored_name || 'gallery-image.jpg';
-
-  return new File([blob], fileName, {
-    type: blob.type || asset.mime_type || 'image/jpeg',
-  });
-};
 
 export function Logbook() {
   const navigate = useNavigate();
+  const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -95,6 +86,7 @@ export function Logbook() {
       progress: String(row.progress ?? 0),
       status: row.status,
       files: [],
+      mediaRefs: [],
     });
     setIsFormOpen(true);
   };
@@ -119,6 +111,7 @@ export function Logbook() {
         progress,
         status: form.status,
         files: form.files,
+        media_refs: form.mediaRefs,
       });
     }
 
@@ -127,14 +120,28 @@ export function Logbook() {
     setForm(emptyForm());
   };
 
-  const handleMediaSelect = async (asset: MediaAsset) => {
-    try {
-      const file = await mediaAssetToFile(asset);
-      setForm((prev) => ({ ...prev, files: [...prev.files, file] }));
-      toast.success('File ditambahkan dari media');
-    } catch (err) {
-      toast.error(getErrorMessage(err));
+  const handleMediaSelect = (asset: MediaAsset) => {
+    if (form.mediaRefs.some((ref) => ref.file_path === asset.file_path)) {
+      return;
     }
+    const ref: LogbookMediaRef = {
+      file_path: asset.file_path,
+      file_name: asset.original_name || asset.stored_name,
+    };
+    setForm((prev) => ({ ...prev, mediaRefs: [...prev.mediaRefs, ref] }));
+    toast.success('File ditambahkan dari media');
+  };
+
+  const handleDeleteLogbook = async (id: string) => {
+    const ok = await showConfirm({
+      title: 'Hapus Logbook',
+      description: 'Apakah Anda yakin ingin menghapus logbook ini?',
+      confirmText: 'Hapus',
+      cancelText: 'Batal',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await remove(id);
   };
 
   const changePage = (next: number) => {
@@ -235,17 +242,38 @@ export function Logbook() {
                 <Upload size={16} />
                 Tambah File dari Media
               </button>
-              {form.files.length > 0 && (
+              {form.mediaRefs.length > 0 && (
                 <div className="space-y-2">
-                  {form.files.map((file, index) => (
-                    <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="text-sm text-gray-900 truncate">{file.name}</p>
-                        <p className="text-xs text-gray-500">{Math.round(file.size / 1024)} KB</p>
+                  {form.mediaRefs.map((ref, index) => (
+                    <div key={`${ref.file_path}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {(() => {
+                          const name = ref.file_name || ref.file_path.split('/').pop() || '';
+                          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name) || /\.(jpg|jpeg|png|gif|webp)$/i.test(ref.file_path);
+                          if (isImage) {
+                            const src = resolveAssetUrl(ref.file_path) || '';
+                            return (
+                              <div className="w-12 h-12 rounded-md overflow-hidden border border-gray-200 bg-white shrink-0">
+                                <ImageWithFallback src={src} alt={name} className="w-full h-full object-cover" />
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="w-12 h-12 rounded-md border border-gray-200 bg-white shrink-0 flex items-center justify-center text-gray-500">
+                              <FileText size={18} />
+                            </div>
+                          );
+                        })()}
+
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-900 truncate">{ref.file_name || ref.file_path.split('/').pop()}</p>
+                          <p className="text-xs text-gray-500 truncate">{ref.file_path}</p>
+                        </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setForm((prev) => ({ ...prev, files: prev.files.filter((_, i) => i !== index) }))}
+                        onClick={() => setForm((prev) => ({ ...prev, mediaRefs: prev.mediaRefs.filter((_, i) => i !== index) }))}
                         className="text-sm text-red-600"
                       >
                         Hapus
@@ -287,7 +315,7 @@ export function Logbook() {
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => navigate(`/logbook/${row.id}`)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-700"><Eye size={16} /></button>
                     <button type="button" onClick={() => openEdit(row)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-700"><Edit2 size={16} /></button>
-                    <button type="button" onClick={() => remove(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-red-600"><Trash2 size={16} /></button>
+                    <button type="button" onClick={() => handleDeleteLogbook(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-red-600"><Trash2 size={16} /></button>
                   </div>
                 </td>
               </tr>
@@ -339,8 +367,11 @@ export function Logbook() {
         open={isMediaPickerOpen}
         onClose={() => setIsMediaPickerOpen(false)}
         onSelect={handleMediaSelect}
+        selectedFilePaths={form.mediaRefs.map((r) => r.file_path)}
         category="logbook"
       />
+
+      {ConfirmDialogElement}
     </div>
   );
 }

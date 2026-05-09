@@ -52,6 +52,11 @@ export interface LogbookListParams {
   limit?: number;
 }
 
+export interface LogbookMediaRef {
+  file_path: string;
+  file_name?: string | null;
+}
+
 export interface CreateLogbookPayload {
   date: string;
   job_category_id: string;
@@ -59,6 +64,7 @@ export interface CreateLogbookPayload {
   progress?: number;
   status?: LogbookStatus;
   files?: File[];
+  media_refs?: LogbookMediaRef[];
 }
 
 export interface UpdateLogbookPayload {

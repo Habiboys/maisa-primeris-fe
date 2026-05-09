@@ -1,4 +1,4 @@
-import { FileText, Search, Upload, X } from 'lucide-react';
+import { Check, FileText, Search, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useMedia } from '../../hooks';
 import { resolveAssetUrl } from '../../lib/utils';
@@ -10,6 +10,11 @@ interface MediaPickerModalProps {
   onClose: () => void;
   onSelect: (item: MediaAsset) => void;
   /**
+   * Optional: daftar file_path yang sudah dipilih oleh parent.
+   * Dipakai untuk menandai item yang sudah ditambahkan.
+   */
+  selectedFilePaths?: string[];
+  /**
    * Kategori yang dipakai saat upload baru (untuk tagging metadata).
    * Tidak dipakai untuk memfilter daftar media — picker selalu menampilkan
    * semua media dari tenant agar user bisa reuse file lintas modul.
@@ -18,7 +23,7 @@ interface MediaPickerModalProps {
   accept?: string;
 }
 
-export function MediaPickerModal({ open, onClose, onSelect, category, accept = 'image/*,application/pdf' }: MediaPickerModalProps) {
+export function MediaPickerModal({ open, onClose, onSelect, selectedFilePaths = [], category, accept = 'image/*,application/pdf' }: MediaPickerModalProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<MediaTypeFilter | ''>('');
@@ -101,14 +106,29 @@ export function MediaPickerModal({ open, onClose, onSelect, category, accept = '
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {items.map((item) => {
                 const isImage = item.mime_type?.startsWith('image/');
+                const isSelected = selectedFilePaths.includes(item.file_path);
                 return (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => onSelect(item)}
-                    className="relative rounded-lg border border-gray-200 overflow-hidden hover:ring-2 hover:ring-primary/20 transition text-left"
+                    onClick={() => {
+                      if (isSelected) return;
+                      onSelect(item);
+                    }}
+                    className={`relative rounded-lg border overflow-hidden transition text-left ${
+                      isSelected
+                        ? 'border-green-300 ring-2 ring-green-500'
+                        : 'border-gray-200 hover:ring-2 hover:ring-primary/20'
+                    }`}
                     title={item.original_name || item.stored_name}
                   >
+                    {isSelected && (
+                      <div className="absolute top-2 right-2 z-10">
+                        <div className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center shadow-sm">
+                          <Check size={14} />
+                        </div>
+                      </div>
+                    )}
                     {isImage ? (
                       <ImageWithFallback
                         src={resolveAssetUrl(item.file_path) || ''}
@@ -130,8 +150,15 @@ export function MediaPickerModal({ open, onClose, onSelect, category, accept = '
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-gray-200">
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between gap-3">
           <p className="text-xs text-gray-500">Pilih file dari media atau upload file baru (gambar atau PDF, maks 2MB).</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50"
+          >
+            Selesai
+          </button>
         </div>
       </div>
     </div>

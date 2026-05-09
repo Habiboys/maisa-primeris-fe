@@ -19,6 +19,9 @@ const toFormData = (payload: CreateLogbookPayload): FormData => {
   if (payload.progress !== undefined) fd.append('progress', String(payload.progress));
   if (payload.status) fd.append('status', payload.status);
   (payload.files ?? []).forEach((file) => fd.append('files', file));
+  if (payload.media_refs && payload.media_refs.length > 0) {
+    fd.append('media_refs', JSON.stringify(payload.media_refs));
+  }
   return fd;
 };
 

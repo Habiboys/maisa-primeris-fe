@@ -1,7 +1,7 @@
 import { Download, Edit2, Eye, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMeetingNotes, useUsers } from '../../hooks';
+import { useConfirmDialog, useMeetingNotes, useUsers } from '../../hooks';
 import { formatDate } from '../../lib/utils';
 import type { MeetingActionInput, MeetingNote, MeetingType } from '../../types';
 import { RichTextEditor } from '../components/RichTextEditor';
@@ -30,6 +30,7 @@ const emptyForm = (): NoteFormState => ({
 
 export function Notulensi() {
   const navigate = useNavigate();
+  const { showConfirm, ConfirmDialog: ConfirmDialogElement } = useConfirmDialog();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -103,6 +104,18 @@ export function Notulensi() {
     const target = Math.min(Math.max(1, next), totalPages);
     setPage(target);
     setParams({ search, meeting_type: typeFilter || undefined, page: target, limit });
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    const ok = await showConfirm({
+      title: 'Hapus Notulensi',
+      description: 'Apakah Anda yakin ingin menghapus notulensi ini?',
+      confirmText: 'Hapus',
+      cancelText: 'Batal',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await remove(id);
   };
 
   const updateAction = (index: number, key: keyof MeetingActionInput, value: string) => {
@@ -225,7 +238,7 @@ export function Notulensi() {
                     <button type="button" onClick={() => navigate(`/notulensi/${row.id}`)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-700"><Eye size={16} /></button>
                     <button type="button" onClick={() => exportPdf(row.id, `notulensi-${row.date}.pdf`)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-700"><Download size={16} /></button>
                     <button type="button" onClick={() => openEdit(row)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-700"><Edit2 size={16} /></button>
-                    <button type="button" onClick={() => remove(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-red-600"><Trash2 size={16} /></button>
+                    <button type="button" onClick={() => handleDeleteNote(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-red-600"><Trash2 size={16} /></button>
                   </div>
                 </td>
               </tr>
@@ -261,6 +274,8 @@ export function Notulensi() {
           <button type="button" onClick={() => changePage(page + 1)} disabled={page >= totalPages} className="px-3 py-1.5 rounded border border-gray-200 disabled:opacity-50">Selanjutnya</button>
         </div>
       </div>
+
+      {ConfirmDialogElement}
     </div>
   );
 }
