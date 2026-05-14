@@ -9,9 +9,11 @@ export type HousingUnitStatus = 'Tersedia' | 'Proses' | 'Sold';
 
 export interface HousingUnit {
   id: string;
+  /** Derivative dari project_units.no (read-only, server-side join). */
   unit_code: string;
   project_id?: string;
   project_unit_id?: string;
+  /** Derivative dari project_units.tipe (read-only, server-side join). */
   unit_type?: string;
   id_rumah?: string;
   no_sertifikat?: string;
@@ -53,10 +55,10 @@ export interface HousingPaymentHistory {
 }
 
 export interface CreateHousingUnitPayload {
-  unit_code: string;
-  project_id?: string;
+  /** Housing dibuat otomatis oleh backend saat project_unit dibuat.
+   *  Klien hanya perlu mengirim project_unit_id; unit_code/unit_type
+   *  diturunkan dari project_units.no/tipe (di-strip server-side jika dikirim). */
   project_unit_id?: string;
-  unit_type?: string;
   id_rumah?: string;
   no_sertifikat?: string;
   panjang_kanan?: number;

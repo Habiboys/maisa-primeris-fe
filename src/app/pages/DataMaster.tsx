@@ -16,13 +16,13 @@ import {
     Wallet,
     X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useConfirmDialog, useConstructionStatuses, useDepartments, useHousingUnits, useMaterials, usePaymentSchemes, useProjects, useProjectUnits, useQCTemplates } from '../../hooks';
 import { formatDateId } from '../../lib/date';
 import { formatRupiah, getErrorMessage, resolveAssetUrl } from '../../lib/utils';
-import { housingService, projectService } from '../../services';
+import { projectService } from '../../services';
 import { departmentService } from '../../services/department.service';
 import { materialService } from '../../services/material.service';
 import { paymentSchemeService } from '../../services/paymentScheme.service';
@@ -113,8 +113,6 @@ export function DataMaster({ section }: DataMasterProps) {
   // ── State: drill-down view ──────────────────────────────────
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<'konstruksi' | 'kavling'>('konstruksi');
-
-  const housingSyncRunningRef = useRef(false);
 
   // ── Data hooks ─────────────────────────────────────────────
   const {
@@ -376,74 +374,6 @@ export function DataMaster({ section }: DataMasterProps) {
     }
   };
 
-  // ── Sinkronkan housing_units untuk project konstruksi ─────
-  // Tujuan: pastikan setiap `project_unit` punya 1 record housing unit (one-to-one),
-  // termasuk jika unit dibuat lewat jalur lain (mis. bulk create) dan housing belum sempat dibuat.
-  const ensureHousingUnitsForProject = async () => {
-    if (!selectedProjectId) return;
-    if (!projectUnits || projectUnits.length === 0) return;
-
-    // Cegah race condition ketika user bolak-balik tab.
-    if (housingSyncRunningRef.current) return;
-    housingSyncRunningRef.current = true;
-
-    try {
-      for (const pu of projectUnits) {
-        const unitCode = pu.no;
-
-        // Cari housing unit berdasarkan unit_code (lintas project),
-        // karena bisa saja relasinya belum sesuai akibat data lama.
-        const existingList = await housingService.getAll({
-          search: unitCode,
-          limit: 50,
-          page: 1,
-        });
-        const existing = existingList.data?.find((u) => u.unit_code === unitCode) ?? null;
-
-        if (!existing) {
-          await housingService.create({
-            unit_code: unitCode,
-            project_id: selectedProjectId,
-            project_unit_id: pu.id,
-            unit_type: pu.tipe ?? undefined,
-            status: 'Tersedia',
-            notes: '',
-          });
-        } else {
-          // Relink agar sesuai dengan project konstruksi ini.
-          if ((existing as any).project_id !== selectedProjectId || (existing as any).project_unit_id !== pu.id) {
-            await housingService.update(existing.id, {
-              project_id: selectedProjectId,
-              project_unit_id: pu.id,
-              // Wipe detail kavling agar project baru tidak ikut membawa data dari project lain.
-              unit_type: pu.tipe ?? null,
-              status: 'Tersedia',
-              notes: '',
-
-              luas_tanah: null,
-              luas_bangunan: null,
-              panjang_kanan: null,
-              panjang_kiri: null,
-              lebar_depan: null,
-              lebar_belakang: null,
-              harga_per_meter: null,
-              harga_jual: null,
-              daya_listrik: null,
-              id_rumah: null,
-              no_sertifikat: null,
-              photo_url: null,
-              sertifikat_file_url: null,
-            } as any);
-          }
-        }
-      }
-    } finally {
-      housingSyncRunningRef.current = false;
-      // Refresh daftar kavling supaya langsung terlihat
-      await kavlingHousing.refetch();
-    }
-  };
-
   // ── Handlers: Project ──────────────────────────────────────
   const openCreateProject = () => {
     setEditingProject(null);
@@ -611,114 +541,8 @@ export function DataMaster({ section }: DataMasterProps) {
     try {
       if (editingUnit) {
         await updateUnit(editingUnit.no, payload);
-
-        // Pastikan relasi housing_unit ikut tersambung ke project konstruksi yang benar.
-        // (Unit code di UI tidak berubah saat edit, tapi project_id/project_unit_id bisa saja belum konsisten.)
-        try {
-          const existingList = await housingService.getAll({
-            search: editingUnit.no,
-            limit: 50,
-            page: 1,
-          });
-          const existingHousing = existingList.data?.find((u) => u.unit_code === editingUnit.no) ?? null;
-          if (existingHousing) {
-            await housingService.update(existingHousing.id, {
-              project_id: selectedProjectId,
-              project_unit_id: editingUnit.id,
-              // Saat edit, relasi bisa berubah; wipe detail agar tidak ikut data project lain.
-              unit_type: editingUnit.tipe ?? null,
-              status: 'Tersedia',
-              notes: '',
-              luas_tanah: null,
-              luas_bangunan: null,
-              panjang_kanan: null,
-              panjang_kiri: null,
-              lebar_depan: null,
-              lebar_belakang: null,
-              harga_per_meter: null,
-              harga_jual: null,
-              daya_listrik: null,
-              id_rumah: null,
-              no_sertifikat: null,
-              photo_url: null,
-              sertifikat_file_url: null,
-            } as any);
-          }
-        } catch {
-          // skip
-        }
       } else {
-        const created = await createUnit(payload);
-        // Auto-create / upsert housing unit for the new construction unit
-        try {
-          // Cari existing housing unit berdasarkan `unit_code` lintas project,
-          // lalu "relink" agar sesuai dengan project konstruksi saat ini.
-          const existingList = await housingService.getAll({
-            search: created.no,
-            limit: 50,
-            page: 1,
-          });
-          const existingUnit =
-            existingList.data?.find((u) => u.unit_code === created.no) ?? null;
-
-          if (!existingUnit) {
-            await housingService.create({
-              unit_code: created.no,
-              project_id: selectedProjectId,
-              project_unit_id: created.id,
-              unit_type: created.tipe ?? undefined,
-              status: 'Tersedia',
-              notes: '',
-            });
-          } else if ((existingUnit as any).project_unit_id !== created.id) {
-            await housingService.update(existingUnit.id, {
-              project_id: selectedProjectId,
-              project_unit_id: created.id,
-              // Wipe detail kavling agar tidak terbawa dari project lain.
-              unit_type: created.tipe ?? null,
-              status: 'Tersedia',
-              notes: '',
-
-              luas_tanah: null,
-              luas_bangunan: null,
-              panjang_kanan: null,
-              panjang_kiri: null,
-              lebar_depan: null,
-              lebar_belakang: null,
-              harga_per_meter: null,
-              harga_jual: null,
-              daya_listrik: null,
-              id_rumah: null,
-              no_sertifikat: null,
-              photo_url: null,
-              sertifikat_file_url: null,
-            } as any);
-          } else if ((existingUnit as any).project_id !== selectedProjectId) {
-            // relink project_id juga supaya kavling muncul di daftar proyek yang benar
-            await housingService.update(existingUnit.id, {
-              project_id: selectedProjectId,
-              // Wipe detail kavling agar tampilan bersih.
-              unit_type: created.tipe ?? null,
-              status: 'Tersedia',
-              notes: '',
-              luas_tanah: null,
-              luas_bangunan: null,
-              panjang_kanan: null,
-              panjang_kiri: null,
-              lebar_depan: null,
-              lebar_belakang: null,
-              harga_per_meter: null,
-              harga_jual: null,
-              daya_listrik: null,
-              id_rumah: null,
-              no_sertifikat: null,
-              photo_url: null,
-              sertifikat_file_url: null,
-            } as any);
-          }
-        } catch {
-          // Silently skip housing auto-create error
-        }
+        await createUnit(payload);
       }
       setShowUnitModal(false);
       setEditingUnit(null);
@@ -813,14 +637,6 @@ export function DataMaster({ section }: DataMasterProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailTab, selectedProjectId]);
-
-  // Sync missing housing_units when entering "Kavling & Unit"
-  useEffect(() => {
-    if (detailTab !== 'kavling') return;
-    if (!selectedProjectId) return;
-    void ensureHousingUnitsForProject();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailTab, selectedProjectId, projectUnits.length]);
 
   // ════════════════════════════════════════════════════════════
   // RENDER

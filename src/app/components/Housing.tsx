@@ -188,7 +188,12 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
   const { units: projectUnits } = useProjectUnits(selectedProjectId);
 
   // Form state
+  // unit_code, unit_type, project_id hanya untuk display di form (auto-fill saat user pilih
+  // project_unit). Backend men-strip-nya saat submit; sumber resmi adalah project_units.
   const initialForm: CreateHousingUnitPayload & {
+    unit_code?: string;
+    unit_type?: string;
+    project_id?: string;
     id_rumah?: string;
     no_sertifikat?: string;
     panjang_kanan?: number;
@@ -326,7 +331,7 @@ export default function Housing({ readOnly = false }: { readOnly?: boolean } = {
     const fd = new FormData();
     if (form.project_id) fd.append("project_id", form.project_id);
     if ((form as any).project_unit_id) fd.append("project_unit_id", (form as any).project_unit_id);
-    fd.append("unit_code", form.unit_code);
+    if (form.unit_code) fd.append("unit_code", form.unit_code);
     if (form.unit_type) fd.append("unit_type", form.unit_type);
     if (form.id_rumah) fd.append("id_rumah", form.id_rumah);
     if ((form as any).no_sertifikat) fd.append("no_sertifikat", (form as any).no_sertifikat);
