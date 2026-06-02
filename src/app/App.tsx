@@ -298,7 +298,7 @@ export default function App() {
         ],
       },
       { id: 'finance', label: 'Finance & Accounting', icon: Wallet, path: '/finance', roles: ['Platform Owner', 'Super Admin', 'Finance'] },
-      { id: 'marketing', label: 'Marketing & Penjualan', icon: Megaphone, path: '/marketing', roles: ['Platform Owner', 'Super Admin'] },
+      { id: 'marketing', label: 'Marketing & Penjualan', icon: Megaphone, path: '/marketing', roles: ['Platform Owner', 'Super Admin', 'Finance'] },
       { id: 'logbook', label: 'Logbook', icon: FileCheck, path: '/logbook', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
       { id: 'notulensi', label: 'Notulensi', icon: ClipboardList, path: '/notulensi', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
       { id: 'media', label: 'Media', icon: Image, path: '/media', roles: ['Platform Owner', 'Super Admin', 'Finance', 'Project Management', 'Sekretaris'] },
