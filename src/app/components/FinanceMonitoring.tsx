@@ -6,7 +6,7 @@ import {
     Plus
 } from 'lucide-react';
 import { formatRupiah } from '../../lib/utils';
-import type { Consumer } from '../../types';
+import type { Consumer, PaymentHistory } from '../../types';
 
 interface BillingItem {
   id: string;
@@ -29,6 +29,19 @@ interface MonitoringData {
   sisa: number;
 }
 
+const sortPaymentsAsc = (payments: PaymentHistory[]) => {
+  const parseTime = (v?: string) => (v ? new Date(v).getTime() : 0);
+  return [...payments].sort((a, b) => {
+    const dateCmp = (a.payment_date || '').localeCompare(b.payment_date || '');
+    if (dateCmp !== 0) return dateCmp;
+
+    const createdCmp = parseTime(a.created_at) - parseTime(b.created_at);
+    if (createdCmp !== 0) return createdCmp;
+
+    return (a.id || '').localeCompare(b.id || '');
+  });
+};
+
 export function FinanceMonitoring({
   consumers,
   onDetail,
@@ -39,24 +52,27 @@ export function FinanceMonitoring({
   /** Sama dengan aksi "Tambah Piutang" di tab lama — buka modal data konsumen */
   onAddConsumer?: () => void;
 }) {
-  const data: MonitoringData[] = consumers.map((c, idx) => ({
-    id: c.id,
-    no: idx + 1,
-    name: c.name,
-    phone: c.phone || '-',
-    payment_scheme: c.payment_scheme || '-',
-    unit_code: c.unit_code || '-',
-    items: (c.payments || []).map((p, i) => ({
-      id: p.id || `p-${i}`,
-      label: p.notes || `Pembayaran ${i + 1}`,
-      amount: p.amount,
-      type: 'payment' as const,
-    })),
-    status: c.status === 'Lunas' ? 'LUNAS' : c.status === 'Dibatalkan' ? 'HOLD' : 'PROCESS',
-    total_price: c.total_price,
-    paid_amount: c.paid_amount,
-    sisa: c.total_price - c.paid_amount,
-  }));
+  const data: MonitoringData[] = consumers.map((c, idx) => {
+    const sortedPayments = sortPaymentsAsc(c.payments || []);
+    return {
+      id: c.id,
+      no: idx + 1,
+      name: c.name,
+      phone: c.phone || '-',
+      payment_scheme: c.payment_scheme || '-',
+      unit_code: c.unit_code || '-',
+      items: sortedPayments.map((p, i) => ({
+        id: p.id || `p-${i}`,
+        label: p.notes || `Pembayaran ${i + 1}`,
+        amount: p.amount,
+        type: 'payment' as const,
+      })),
+      status: c.status === 'Lunas' ? 'LUNAS' : c.status === 'Dibatalkan' ? 'HOLD' : 'PROCESS',
+      total_price: c.total_price,
+      paid_amount: c.paid_amount,
+      sisa: c.total_price - c.paid_amount,
+    };
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {

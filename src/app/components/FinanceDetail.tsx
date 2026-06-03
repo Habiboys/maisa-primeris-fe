@@ -76,6 +76,18 @@ export function FinanceDetail({ id, onBack }: FinanceDetailProps) {
   // Calculations
   const totalTagihan = useMemo(() => tagihan.reduce((acc, curr) => acc + curr.harga, 0), [tagihan]);
   const totalPemasukan = useMemo(() => payments.reduce((acc, curr) => acc + (curr.amount ?? (curr.debit ?? 0) - (curr.credit ?? 0)), 0), [payments]);
+  const sortedPayments = useMemo(() => {
+    const parseTime = (v?: string) => (v ? new Date(v).getTime() : 0);
+    return [...payments].sort((a, b) => {
+      const dateCmp = (a.payment_date || '').localeCompare(b.payment_date || '');
+      if (dateCmp !== 0) return dateCmp;
+
+      const createdCmp = parseTime(a.created_at) - parseTime(b.created_at);
+      if (createdCmp !== 0) return createdCmp;
+
+      return (a.id || '').localeCompare(b.id || '');
+    });
+  }, [payments]);
   const sisaPiutang = totalTagihan - totalPemasukan;
   const progressPercent = totalTagihan > 0 ? Math.min(Math.round((totalPemasukan / totalTagihan) * 100), 100) : 0;
 
@@ -190,7 +202,7 @@ export function FinanceDetail({ id, onBack }: FinanceDetailProps) {
       .map((t, i) => `<tr><td>${i + 1}</td><td>${t.jenis}</td><td class="right">${formatRupiah(t.harga)}</td></tr>`)
       .join('');
 
-    const paymentRows = payments
+    const paymentRows = sortedPayments
       .map((p, i) => `<tr><td>${i + 1}</td><td>${p.payment_date}</td><td>${p.notes || '-'}</td><td class="right">${formatRupiah(p.amount)}</td></tr>`)
       .join('');
 
@@ -439,7 +451,7 @@ export function FinanceDetail({ id, onBack }: FinanceDetailProps) {
                     const [y, m, day] = d.split('-');
                     return day && m && y ? `${day}/${m}/${y}` : d;
                   };
-                  const asc = [...payments].sort((a, b) => (a.payment_date || '').localeCompare(b.payment_date || ''));
+                  const asc = sortedPayments;
                   let running = totalTagihan;
                   const sisaAfter: Record<string, number> = {};
                   asc.forEach((p) => {
@@ -461,10 +473,10 @@ export function FinanceDetail({ id, onBack }: FinanceDetailProps) {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-bold text-green-600 whitespace-nowrap">
-                        {(item.debit ?? 0) > 0 ? formatRupiah(item.debit) : '-'}
+                        {(item.debit ?? 0) > 0 ? formatRupiah(item.debit ?? 0) : '-'}
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-bold text-red-600 whitespace-nowrap">
-                        {(item.credit ?? 0) > 0 ? formatRupiah(item.credit) : '-'}
+                        {(item.credit ?? 0) > 0 ? formatRupiah(item.credit ?? 0) : '-'}
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{formatRupiah(sisaAfter[item.id] ?? 0)}</td>
                       <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{item.estimasi_date ? formatDdMmYyyy(item.estimasi_date) : '-'}</td>
